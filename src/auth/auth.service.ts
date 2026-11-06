@@ -15,13 +15,14 @@ export class AuthService {
     if (!user.active || (user.employee && !user.employee.active)) {
       throw new UnauthorizedException('Tu usuario está inactivo. Contacta a tu supervisor.');
     }
-    const payload: AuthUser = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      employeeId: user.employee?.id ?? null,
-    };
-    return { accessToken: await this.jwt.signAsync(payload), user: await this.me(user.id) };
+    return this.issueSession(user.id);
+  }
+
+  /** Emite el token de sesión y el perfil de un usuario ya validado. */
+  async issueSession(userId: string) {
+    const user = await this.resolveActiveUser(userId);
+    if (!user) throw new UnauthorizedException('Tu usuario está inactivo o no existe.');
+    return { accessToken: await this.jwt.signAsync(user), user: await this.me(userId) };
   }
 
   /** Devuelve el AuthUser si el usuario (y su ficha de empleado, si tiene) están activos. */

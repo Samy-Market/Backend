@@ -16,7 +16,8 @@
     "db:down": "docker compose down",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "prisma db seed",
-    "setup": "npm run db:up && npm run db:migrate && npm run db:seed"
+    "setup": "npm run db:up && npm run db:migrate && npm run db:seed",
+    "user:create": "ts-node --transpile-only prisma/create-user.ts"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"

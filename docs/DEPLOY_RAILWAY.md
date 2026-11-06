@@ -70,20 +70,36 @@ El navegador llama al backend directamente por su dominio público. Por eso hay 
 
 4. Vuelve al servicio **backend** y confirma que `CORS_ORIGINS` apunte al dominio del frontend.
 
-## 4. Cargar datos iniciales
+## 4. Crear el usuario administrador (desde el frontend)
 
-La base de producción arranca **vacía**: sin usuarios no se puede iniciar sesión.
+La base de producción arranca **vacía**. Mientras no exista ningún administrador, la pantalla de login muestra **"Configuración inicial"**:
 
-1. En **Postgres → Variables**, copia `DATABASE_PUBLIC_URL`.
-2. En tu PC, dentro de la carpeta del backend, corre:
+1. Abre el dominio del frontend.
+2. Completa el correo, la contraseña (dos veces) y, si quieres, el nombre de la sede.
+3. **Crear administrador.** Entras directo al panel como admin.
 
-   ```bash
-   DATABASE_URL="<DATABASE_PUBLIC_URL>" SEED_ALLOW_REMOTE=true npm run db:seed
-   ```
+En cuanto existe un admin, ese formulario **desaparece y el servidor lo bloquea**. Si alguien llega a la página después, solo verá el login normal.
 
-   Esto carga los mismos datos que en local: un admin, un supervisor, 5 empleados, 2 turnos y el historial.
+> 🔒 **Recomendado:** hasta que crees tu admin, cualquiera que abra la URL vería ese formulario. Para cerrarlo, agrega en **backend → Variables** `SETUP_CODE=<una palabra secreta>`. El formulario pedirá ese código. Cuando ya tengas tu admin, puedes borrar la variable.
 
-> ⚠️ El seed **borra todos los datos** antes de cargar. Úsalo solo en una base nueva o de demo. Después, entra como admin, **cambia las contraseñas** y crea los turnos y empleados reales.
+Después, desde el panel:
+- **Usuarios:** crea otros administradores y supervisores, y cambia contraseñas (incluida la tuya).
+- **Turnos**, y luego **Empleados**. Cada empleado entra con el correo y la contraseña que le asignes.
+
+<details>
+<summary>Alternativas desde la terminal (recuperar acceso o cargar datos de demo)</summary>
+
+Necesitas `DATABASE_PUBLIC_URL` (Postgres → Variables → 👁). No la compartas: incluye la contraseña de la base.
+
+- **Recuperar el acceso** si olvidaste la contraseña del admin: crea el usuario o cambia su contraseña sin tocar otros datos.
+  ```bash
+  DATABASE_URL="<DATABASE_PUBLIC_URL>" npm run user:create -- --email admin@tuempresa.com
+  ```
+- **Cargar datos de ejemplo** para una demo. ⚠️ Borra todo.
+  ```bash
+  DATABASE_URL="<DATABASE_PUBLIC_URL>" SEED_ALLOW_REMOTE=true npm run db:seed
+  ```
+</details>
 
 ---
 

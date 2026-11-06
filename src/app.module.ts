@@ -13,6 +13,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { ReportsModule } from './reports/reports.module';
 import { ShiftsModule } from './shifts/shifts.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ShiftsModule } from './shifts/shifts.module';
     ShiftsModule,
     JustificationsModule,
     ReportsModule,
+    UsersModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -24,6 +24,15 @@ Comprueba que responde abriendo http://localhost:3000/health.
 
 > El seed **borra y recrea** todos los datos. Contra una base remota se niega a correr salvo que pases `SEED_ALLOW_REMOTE=true`.
 
+## Primer administrador
+
+En una base **vacía** (por ejemplo, recién desplegada) no hace falta el seed: el frontend muestra **"Configuración inicial"** para crear el primer admin. El endpoint se cierra en cuanto existe uno. Después, los demás administradores y supervisores se crean en **Usuarios**.
+
+Reglas de la gestión de usuarios:
+- Un admin no puede desactivarse ni cambiar su propio rol.
+- Siempre queda al menos un admin activo.
+- Todo cambio queda en `AuditLog`.
+
 ## Credenciales de prueba
 
 | Rol | Correo | Contraseña |
@@ -44,7 +53,8 @@ El seed también crea una sede ("Matriz Guayaquil") y marcaciones de ejemplo de 
 | `npm run setup` | `db:up` + `db:migrate` + `db:seed` |
 | `npm run db:up` / `db:down` | Levanta o detiene PostgreSQL (`docker-compose.yml`) |
 | `npm run db:migrate` | Aplica las migraciones (`prisma migrate deploy`) |
-| `npm run db:seed` | Recarga los datos de ejemplo |
+| `npm run db:seed` | Recarga los datos de ejemplo (**borra todo**) |
+| `npm run user:create -- --email <correo> [--role SUPERVISOR]` | Desde la terminal: crea un ADMIN (o SUPERVISOR) o le cambia la contraseña, sin tocar otros datos. Útil para recuperar el acceso |
 | `npm run prisma:migrate -- --name x` | Crea una migración nueva al cambiar el esquema |
 | `npm run start:dev` | Desarrollo con recarga automática |
 | `npm run build` / `start:prod` | Compila / aplica migraciones y arranca (producción) |
@@ -61,6 +71,7 @@ El seed también crea una sede ("Matriz Guayaquil") y marcaciones de ejemplo de 
 | `CORS_ORIGINS` | `http://localhost:5173,…` | Orígenes del frontend permitidos (REST y WebSocket), separados por coma |
 | `APP_TIMEZONE` | `America/Guayaquil` | Zona de referencia para días, atrasos y reportes |
 | `MAX_SESSION_HOURS` | `16` | Horas tras las que un ingreso sin salida se considera abandonado |
+| `SETUP_CODE` | — | Opcional. Si existe, el formulario de configuración inicial (crear el primer admin) exige este código |
 
 ## Reglas de negocio
 
@@ -81,6 +92,9 @@ Todas las rutas requieren `Authorization: Bearer <token>`, salvo el login. Los e
 |---|---|---|---|
 | POST | `/auth/login` | público | `{ email, password }` → `{ accessToken, user }` |
 | GET | `/auth/me` | todos | Perfil, ficha de empleado y turno |
+| GET | `/auth/setup` | público | `{ needsSetup, requiresCode }`: ¿falta crear el primer admin? |
+| POST | `/auth/setup` | público, solo si no hay admins | `{ email, password, siteName?, code? }`: crea el primer ADMIN (y una sede) e inicia su sesión |
+| GET / POST / PATCH | `/users`, `/users/:id` | ADMIN | Usuarios del personal (ADMIN y SUPERVISOR): alta, rol, activo y contraseña |
 | POST | `/attendance/mark` | EMPLOYEE | `{ expectedType? }`. El servidor decide IN/OUT y la hora |
 | GET | `/attendance/me/status` | EMPLOYEE | Estado actual (pantalla principal) |
 | GET | `/attendance/me?month=AAAA-MM` | EMPLOYEE | Historial del mes con resumen diario |
