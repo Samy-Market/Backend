@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  EMPLOYEE
+  SUPERVISOR
+  ADMIN
+}
+
+enum AttendanceType {
+  IN
+  OUT
+}
+
+/// Origen de la marcación. Extensible a QR, MOBILE, KIOSK, etc.
+enum AttendanceSource {
+  WEB
+}
+
+enum JustificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(EMPLOYEE)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employee  Employee?
+  reviews   Justification[] @relation("Reviewer")
+  auditLogs AuditLog[]
+}
+
+model Site {
+  id           String  @id @default(uuid())
+  name         String
+  /// Punto de extensión para geocerca (aún no se valida)
+  lat          Float?
+  lng          Float?
+  radiusMeters Int?
+
+  employees Employee[]
+}
+
+model Shift {
+  id               String @id @default(uuid())
+  name             String
+  /// "HH:mm" en hora local (APP_TIMEZONE)
+  startTime        String
+  /// "HH:mm" en hora local (APP_TIMEZONE)
+  endTime          String
+  toleranceMinutes Int    @default(0)
+
+  employees Employee[]
+}
+
+model Employee {
+  id         String  @id @default(uuid())
+  userId     String  @unique
+  fullName   String
+  documentId String  @unique
+  position   String
+  shiftId    String?
+  siteId     String
+  active     Boolean @default(true)
+
+  user           User            @relation(fields: [userId], references: [id])
+  shift          Shift?          @relation(fields: [shiftId], references: [id])
+  site           Site            @relation(fields: [siteId], references: [id])
+  attendances    Attendance[]
+  justifications Justification[]
+}
+
+model Attendance {
+  id          String           @id @default(uuid())
+  employeeId  String
+  type        AttendanceType
+  /// Siempre asignado por el servidor (UTC)
+  timestamp   DateTime         @default(now())
+  source      AttendanceSource @default(WEB)
+  /// Copia fija calculada al registrar el IN
+  isLate      Boolean          @default(false)
+  lateMinutes Int              @default(0)
+  createdAt   DateTime         @default(now())
+
+  employee       Employee        @relation(fields: [employeeId], references: [id])
+  justifications Justification[]
+
+  @@index([employeeId, timestamp])
+  @@index([timestamp])
+}
+
+model Justification {
+  id           String              @id @default(uuid())
+  attendanceId String
+  employeeId   String
+  reason       String
+  status       JustificationStatus @default(PENDING)
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+  createdAt    DateTime            @default(now())
+
+  attendance Attendance @relation(fields: [attendanceId], references: [id])
+  employee   Employee   @relation(fields: [employeeId], references: [id])
+  reviewer   User?      @relation("Reviewer", fields: [reviewedBy], references: [id])
+
+  @@index([status])
+  @@index([employeeId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}

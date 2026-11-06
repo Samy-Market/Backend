@@ -1,0 +1,11 @@
+node_modules
+dist
+dev-dist
+coverage
+*.log
+.DS_Store
+# Variables locales y secretos: nunca se suben. Usa .env.example como plantilla.
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
