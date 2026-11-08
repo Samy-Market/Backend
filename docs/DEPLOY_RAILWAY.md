@@ -2,11 +2,11 @@
 
 El sistema está en **dos repositorios** dentro de una organización de GitHub, y en Railway se despliega como **3 servicios** de un mismo proyecto:
 
-| Servicio en Railway | Origen | Cómo se construye |
-|---|---|---|
-| **Postgres** | Plantilla oficial de Railway | Base de datos administrada |
-| **backend** | Repositorio `asistencia-backend` | `Dockerfile` + `railway.json` en la raíz del repo |
-| **frontend** | Repositorio `asistencia-frontend` | `Dockerfile` + `railway.json` en la raíz del repo |
+| Servicio en Railway | Origen                            | Cómo se construye                                 |
+| ------------------- | --------------------------------- | ------------------------------------------------- |
+| **Postgres**        | Plantilla oficial de Railway      | Base de datos administrada                        |
+| **backend**         | Repositorio `asistencia-backend`  | `Dockerfile` + `railway.json` en la raíz del repo |
+| **frontend**        | Repositorio `asistencia-frontend` | `Dockerfile` + `railway.json` en la raíz del repo |
 
 ```
  Navegador ──HTTPS──▶ frontend (nginx, archivos estáticos)
@@ -15,6 +15,7 @@ El sistema está en **dos repositorios** dentro de una organización de GitHub, 
 ```
 
 El navegador llama al backend directamente por su dominio público. Por eso hay dos variables cruzadas:
+
 - El frontend necesita la URL del backend **al construirse** (`VITE_API_URL`).
 - El backend debe permitir el dominio del frontend (`CORS_ORIGINS`).
 
@@ -83,6 +84,7 @@ En cuanto existe un admin, ese formulario **desaparece y el servidor lo bloquea*
 > 🔒 **Recomendado:** hasta que crees tu admin, cualquiera que abra la URL vería ese formulario. Para cerrarlo, agrega en **backend → Variables** `SETUP_CODE=<una palabra secreta>`. El formulario pedirá ese código. Cuando ya tengas tu admin, puedes borrar la variable.
 
 Después, desde el panel:
+
 - **Usuarios:** crea otros administradores y supervisores, y cambia contraseñas (incluida la tuya).
 - **Turnos**, y luego **Empleados**. Cada empleado entra con el correo y la contraseña que le asignes.
 
@@ -99,6 +101,7 @@ Necesitas `DATABASE_PUBLIC_URL` (Postgres → Variables → 👁). No la compart
   ```bash
   DATABASE_URL="<DATABASE_PUBLIC_URL>" SEED_ALLOW_REMOTE=true npm run db:seed
   ```
+
 </details>
 
 ---
@@ -117,14 +120,14 @@ Cada vez que haces **Push origin** en GitHub Desktop sobre la rama `main` de uno
 
 ## Problemas comunes
 
-| Síntoma | Causa probable | Solución |
-|---|---|---|
-| Al crear el servicio no aparece el repositorio | La app de Railway no tiene acceso a la organización | En GitHub: organización → Settings → GitHub Apps → Railway → **Configure** y agrega los repos |
-| El login dice *"No se pudo conectar con el servidor"* | `VITE_API_URL` mal escrita, o el frontend se construyó antes de que existiera el dominio del backend | Corrige la variable en **frontend** y haz Redeploy |
-| La consola muestra *"blocked by CORS policy"*, o el indicador dice *"Sin conexión en vivo"* | `CORS_ORIGINS` no coincide con el dominio del frontend | Debe ser exactamente `https://<dominio-frontend>`, sin `/` al final |
-| `Environment variable not found: DATABASE_URL` | Falta la variable o el servicio Postgres tiene otro nombre | Usa `${{<NombreDelServicio>.DATABASE_URL}}` |
-| El healthcheck falla | Falta `JWT_SECRET` o hay un error de migración | Revisa los logs del backend |
-| El build del frontend falla: *"falta la variable VITE_API_URL"* | La variable no existe en el servicio | Agrégala en **frontend → Variables** |
+| Síntoma                                                                                     | Causa probable                                                                                       | Solución                                                                                      |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Al crear el servicio no aparece el repositorio                                              | La app de Railway no tiene acceso a la organización                                                  | En GitHub: organización → Settings → GitHub Apps → Railway → **Configure** y agrega los repos |
+| El login dice _"No se pudo conectar con el servidor"_                                       | `VITE_API_URL` mal escrita, o el frontend se construyó antes de que existiera el dominio del backend | Corrige la variable en **frontend** y haz Redeploy                                            |
+| La consola muestra _"blocked by CORS policy"_, o el indicador dice _"Sin conexión en vivo"_ | `CORS_ORIGINS` no coincide con el dominio del frontend                                               | Debe ser exactamente `https://<dominio-frontend>`, sin `/` al final                           |
+| `Environment variable not found: DATABASE_URL`                                              | Falta la variable o el servicio Postgres tiene otro nombre                                           | Usa `${{<NombreDelServicio>.DATABASE_URL}}`                                                   |
+| El healthcheck falla                                                                        | Falta `JWT_SECRET` o hay un error de migración                                                       | Revisa los logs del backend                                                                   |
+| El build del frontend falla: _"falta la variable VITE_API_URL"_                             | La variable no existe en el servicio                                                                 | Agrégala en **frontend → Variables**                                                          |
 
 ## Costos y seguridad
 

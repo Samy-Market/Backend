@@ -41,19 +41,51 @@ model User {
   employee  Employee?
   reviews   Justification[] @relation("Reviewer")
   auditLogs AuditLog[]
+  transfers SiteTransfer[] @relation("TransferAuthor")
 }
 
+/// Sede o local de la empresa (ej. "Matriz", "Sucursal Norte").
 model Site {
-  id           String  @id @default(uuid())
-  name         String
+  id           String   @id @default(uuid())
+  name         String   @unique
+  address      String?
+  active       Boolean  @default(true)
   /// Punto de extensión para geocerca (aún no se valida)
   lat          Float?
   lng          Float?
   radiusMeters Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  employees Employee[]
+  /// Empleados cuya sede base es esta
+  employees   Employee[]
+  /// Marcaciones registradas en esta sede
+  attendances Attendance[]
+  /// Traslados temporales hacia esta sede
+  transfers   SiteTransfer[]
 }
 
+/// Traslado temporal: el empleado trabaja en otra sede entre dos fechas locales (inclusivas).
+/// Lo registra un supervisor o administrador (emergencias u órdenes de la empresa).
+model SiteTransfer {
+  id         String   @id @default(uuid())
+  employeeId String
+  siteId     String
+  startDate  DateTime @db.Date
+  endDate    DateTime @db.Date
+  reason     String?
+  createdBy  String
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  site     Site     @relation(fields: [siteId], references: [id])
+  author   User     @relation("TransferAuthor", fields: [createdBy], references: [id])
+
+  @@index([employeeId, startDate])
+  @@index([siteId, startDate])
+}
+
+/// Bloque horario de un día (ej. "Mañana 08:00–18:00").
 model Shift {
   id               String @id @default(uuid())
   name             String
@@ -63,7 +95,50 @@ model Shift {
   endTime          String
   toleranceMinutes Int    @default(0)
 
-  employees Employee[]
+  scheduleDays ScheduleDay[]
+}
+
+/// Plantilla semanal reutilizable (ej. "Rotación A"): qué turno toca cada día de la semana.
+model Schedule {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  days        ScheduleDay[]
+  assignments ScheduleAssignment[]
+}
+
+/// Un día de la plantilla. weekday: 1 = lunes … 7 = domingo. shiftId nulo = descanso.
+model ScheduleDay {
+  id         String  @id @default(uuid())
+  scheduleId String
+  weekday    Int
+  shiftId    String?
+
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  shift    Shift?   @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+
+  @@unique([scheduleId, weekday])
+}
+
+/// Horario asignado a un empleado durante un periodo (ej. una rotación de 3 meses).
+/// Fechas en día local (APP_TIMEZONE), ambas inclusivas; endDate nulo = sin fecha de fin.
+model ScheduleAssignment {
+  id         String    @id @default(uuid())
+  employeeId String
+  scheduleId String
+  startDate  DateTime  @db.Date
+  endDate    DateTime? @db.Date
+  createdAt  DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  schedule Schedule @relation(fields: [scheduleId], references: [id])
+
+  @@index([employeeId, startDate])
+  @@index([scheduleId])
 }
 
 model Employee {
@@ -72,15 +147,15 @@ model Employee {
   fullName   String
   documentId String  @unique
   position   String
-  shiftId    String?
   siteId     String
   active     Boolean @default(true)
 
-  user           User            @relation(fields: [userId], references: [id])
-  shift          Shift?          @relation(fields: [shiftId], references: [id])
-  site           Site            @relation(fields: [siteId], references: [id])
+  user           User                 @relation(fields: [userId], references: [id])
+  site           Site                 @relation(fields: [siteId], references: [id])
   attendances    Attendance[]
   justifications Justification[]
+  assignments    ScheduleAssignment[]
+  transfers      SiteTransfer[]
 }
 
 model Attendance {
@@ -93,13 +168,17 @@ model Attendance {
   /// Copia fija calculada al registrar el IN
   isLate      Boolean          @default(false)
   lateMinutes Int              @default(0)
+  /// Sede donde se registró la marcación (sede base o la del traslado vigente ese día)
+  siteId      String?
   createdAt   DateTime         @default(now())
 
   employee       Employee        @relation(fields: [employeeId], references: [id])
+  site           Site?           @relation(fields: [siteId], references: [id])
   justifications Justification[]
 
   @@index([employeeId, timestamp])
   @@index([timestamp])
+  @@index([siteId, timestamp])
 }
 
 model Justification {

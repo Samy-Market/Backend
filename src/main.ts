@@ -1,40 +1,17 @@
-import { BadRequestException, Logger, ValidationError, ValidationPipe } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { AllExceptionsFilter } from './common/filters/http-exception.filter';
-import { CorsIoAdapter } from './realtime/socket-io.adapter';
-
-export function corsOrigins(): string[] {
-  return (process.env.CORS_ORIGINS || 'http://localhost:5173')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
-}
-
-/** Aplana los errores de class-validator y traduce los mensajes por defecto que no se personalizaron. */
-function flattenErrors(errors: ValidationError[], parent = ''): string[] {
-  return errors.flatMap((e) => {
-    const field = parent ? `${parent}.${e.property}` : e.property;
-    const own = Object.entries(e.constraints ?? {}).map(([key, msg]) =>
-      key === 'whitelistValidation' ? `El campo "${field}" no está permitido.` : msg,
-    );
-    return [...own, ...flattenErrors(e.children ?? [], field)];
-  });
-}
+import { corsOrigins } from './config/app.config';
+import { AllExceptionsFilter } from './shared/http/filters/all-exceptions.filter';
+import { validationPipe } from './shared/http/validation';
+import { CorsIoAdapter } from './shared/infrastructure/realtime/socket-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // Content-Disposition expuesto para que el navegador lea el nombre del Excel.
   app.enableCors({ origin: corsOrigins(), credentials: true, exposedHeaders: ['Content-Disposition'] });
   app.useWebSocketAdapter(new CorsIoAdapter(app, corsOrigins()));
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: true },
-      exceptionFactory: (errors: ValidationError[]) => new BadRequestException(flattenErrors(errors)),
-    }),
-  );
+  app.useGlobalPipes(validationPipe());
   app.useGlobalFilters(new AllExceptionsFilter());
   app.enableShutdownHooks();
   const port = Number(process.env.PORT || 3000);
@@ -42,4 +19,4 @@ async function bootstrap() {
   await app.listen(port, '0.0.0.0');
   Logger.log(`API escuchando en http://localhost:${port}`, 'Bootstrap');
 }
-bootstrap();
+void bootstrap();

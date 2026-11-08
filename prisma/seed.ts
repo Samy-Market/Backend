@@ -1,8 +1,7 @@
-/* eslint-disable no-console */
 import { PrismaClient, Role, AttendanceType } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { DateTime } from 'luxon';
-import { computeLateness } from '../src/attendance/attendance.domain';
+import { computeLateness } from '../src/modules/attendance/domain/attendance-rules';
 
 const prisma = new PrismaClient();
 const ZONE = process.env.APP_TIMEZONE || 'America/Guayaquil';
@@ -33,20 +32,47 @@ async function main() {
   await prisma.auditLog.deleteMany();
   await prisma.justification.deleteMany();
   await prisma.attendance.deleteMany();
+  await prisma.siteTransfer.deleteMany();
+  await prisma.scheduleAssignment.deleteMany();
   await prisma.employee.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.schedule.deleteMany();
   await prisma.shift.deleteMany();
   await prisma.site.deleteMany();
 
-  const site = await prisma.site.create({
-    data: { name: 'Matriz Guayaquil', lat: -2.170998, lng: -79.922359, radiusMeters: 150 },
+  // Dos sedes de ejemplo.
+  const centro = await prisma.site.create({
+    data: { name: 'Sede Centro', address: 'Av. 9 de Octubre y Boyacá, Guayaquil', lat: -2.189412, lng: -79.889066, radiusMeters: 150 },
+  });
+  const norte = await prisma.site.create({
+    data: { name: 'Sede Norte', address: 'Av. Francisco de Orellana, Guayaquil', lat: -2.152345, lng: -79.893456, radiusMeters: 150 },
   });
 
-  const morning = await prisma.shift.create({
-    data: { name: 'Matutino', startTime: '08:00', endTime: '17:00', toleranceMinutes: 10 },
+  // Turnos (bloques horarios) típicos de un centro comercial.
+  const manana = await prisma.shift.create({
+    data: { name: 'Mañana', startTime: '08:00', endTime: '18:00', toleranceMinutes: 10 },
   });
-  const afternoon = await prisma.shift.create({
-    data: { name: 'Vespertino', startTime: '13:00', endTime: '21:00', toleranceMinutes: 5 },
+  const tarde = await prisma.shift.create({
+    data: { name: 'Tarde', startTime: '11:00', endTime: '21:00', toleranceMinutes: 10 },
+  });
+
+  // Horarios rotativos: patrón semanal que se repite durante la rotación (1 = lunes … 7 = domingo).
+  const pattern = (days: (typeof manana | null)[]) => days.map((shift, i) => ({ weekday: i + 1, shiftId: shift?.id ?? null }));
+  const rotA = await prisma.schedule.create({
+    data: {
+      name: 'Rotación A',
+      description: 'Alterna mañana y tarde; descansa el domingo.',
+      days: { create: pattern([manana, tarde, manana, tarde, manana, tarde, null]) },
+    },
+    include: { days: { include: { shift: true } } },
+  });
+  const rotB = await prisma.schedule.create({
+    data: {
+      name: 'Rotación B',
+      description: 'Inversa de la A; descansa el lunes y trabaja el domingo.',
+      days: { create: pattern([null, manana, tarde, manana, tarde, manana, tarde]) },
+    },
+    include: { days: { include: { shift: true } } },
   });
 
   const [adminHash, supHash, empHash] = await Promise.all([
@@ -63,12 +89,53 @@ async function main() {
   });
 
   const people = [
-    { email: 'ana.torres@empresa.com', fullName: 'Ana Torres', documentId: '0912345678', position: 'Cajera', shift: morning },
-    { email: 'luis.mendoza@empresa.com', fullName: 'Luis Mendoza', documentId: '0923456789', position: 'Bodeguero', shift: morning },
-    { email: 'maria.vera@empresa.com', fullName: 'María Vera', documentId: '0934567890', position: 'Asesora comercial', shift: morning },
-    { email: 'carlos.zambrano@empresa.com', fullName: 'Carlos Zambrano', documentId: '0945678901', position: 'Repartidor', shift: afternoon },
-    { email: 'sofia.ponce@empresa.com', fullName: 'Sofía Ponce', documentId: '0956789012', position: 'Asistente administrativa', shift: afternoon },
+    {
+      email: 'ana.torres@empresa.com',
+      fullName: 'Ana Torres',
+      documentId: '0912345678',
+      position: 'Cajera / perchera',
+      schedule: rotA,
+      site: centro,
+    },
+    {
+      email: 'luis.mendoza@empresa.com',
+      fullName: 'Luis Mendoza',
+      documentId: '0923456789',
+      position: 'Bodeguero',
+      schedule: rotA,
+      site: centro,
+    },
+    {
+      email: 'maria.vera@empresa.com',
+      fullName: 'María Vera',
+      documentId: '0934567890',
+      position: 'Asesora comercial',
+      schedule: rotB,
+      site: norte,
+    },
+    {
+      email: 'carlos.zambrano@empresa.com',
+      fullName: 'Carlos Zambrano',
+      documentId: '0945678901',
+      position: 'Cajero',
+      schedule: rotB,
+      site: norte,
+    },
+    {
+      email: 'sofia.ponce@empresa.com',
+      fullName: 'Sofía Ponce',
+      documentId: '0956789012',
+      position: 'Asistente administrativa',
+      schedule: rotA,
+      site: centro,
+    },
   ];
+
+  // Rotación trimestral vigente: empezó hace 3 semanas y dura 3 meses.
+  const today = DateTime.now().setZone(ZONE).startOf('day');
+  const rotationStart = today.minus({ weeks: 3 });
+  const rotationEnd = rotationStart.plus({ months: 3 }).minus({ days: 1 });
+  const dbDate = (d: DateTime) => new Date(`${d.toISODate()}T00:00:00.000Z`);
 
   const employees = [];
   for (const p of people) {
@@ -76,20 +143,15 @@ async function main() {
       data: { email: p.email, passwordHash: empHash, role: Role.EMPLOYEE },
     });
     const employee = await prisma.employee.create({
-      data: {
-        userId: user.id,
-        fullName: p.fullName,
-        documentId: p.documentId,
-        position: p.position,
-        shiftId: p.shift.id,
-        siteId: site.id,
-      },
+      data: { userId: user.id, fullName: p.fullName, documentId: p.documentId, position: p.position, siteId: p.site.id },
     });
-    employees.push({ employee, shift: p.shift });
+    await prisma.scheduleAssignment.create({
+      data: { employeeId: employee.id, scheduleId: p.schedule.id, startDate: dbDate(rotationStart), endDate: dbDate(rotationEnd) },
+    });
+    employees.push({ employee, schedule: p.schedule, site: p.site });
   }
 
-  // Historial de ejemplo: días laborables de las últimas 2 semanas (hoy queda libre para probar).
-  const today = DateTime.now().setZone(ZONE).startOf('day');
+  // Historial de ejemplo según el horario de cada día (hoy queda libre para probar).
   let rand = 42;
   const rnd = (min: number, max: number) => {
     rand = (rand * 9301 + 49297) % 233280;
@@ -99,25 +161,48 @@ async function main() {
   let count = 0;
   for (let d = 14; d >= 1; d--) {
     const day = today.minus({ days: d });
-    if (day.weekday > 5) continue; // solo lunes a viernes
-    for (const { employee, shift } of employees) {
-      if (rnd(1, 10) === 1) continue; // ausencia ocasional
+    for (const { employee, schedule, site } of employees) {
+      const shift = schedule.days.find((x) => x.weekday === day.weekday)?.shift;
+      if (!shift) continue; // descanso
+      if (rnd(1, 12) === 1) continue; // ausencia ocasional
       const [sh, sm] = shift.startTime.split(':').map(Number);
       const [eh, em] = shift.endTime.split(':').map(Number);
-      const inAt = day.set({ hour: sh, minute: sm }).plus({ minutes: rnd(-15, 25) }).toJSDate();
-      const outAt = day.set({ hour: eh, minute: em }).plus({ minutes: rnd(-10, 30) }).toJSDate();
+      const inAt = day
+        .set({ hour: sh, minute: sm })
+        .plus({ minutes: rnd(-15, 25) })
+        .toJSDate();
+      const outAt = day
+        .set({ hour: eh, minute: em })
+        .plus({ minutes: rnd(-10, 30) })
+        .toJSDate();
       const late = computeLateness(inAt, shift, ZONE);
       await prisma.attendance.create({
-        data: { employeeId: employee.id, type: AttendanceType.IN, timestamp: inAt, ...late },
+        data: { employeeId: employee.id, type: AttendanceType.IN, timestamp: inAt, ...late, siteId: site.id },
       });
       await prisma.attendance.create({
-        data: { employeeId: employee.id, type: AttendanceType.OUT, timestamp: outAt },
+        data: { employeeId: employee.id, type: AttendanceType.OUT, timestamp: outAt, siteId: site.id },
       });
       count += 2;
     }
   }
 
-  console.log(`Seed completado: 1 sede, 2 turnos, 7 usuarios, ${count} marcaciones de ejemplo.`);
+  // Traslado de ejemplo: Luis (Sede Centro) apoya en la Sede Norte desde hoy por 3 días.
+  const admin = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@empresa.com' } });
+  const luis = employees.find((x) => x.employee.fullName === 'Luis Mendoza')!.employee;
+  await prisma.siteTransfer.create({
+    data: {
+      employeeId: luis.id,
+      siteId: norte.id,
+      startDate: dbDate(today),
+      endDate: dbDate(today.plus({ days: 2 })),
+      reason: 'Apoyo por inventario en Sede Norte',
+      createdBy: admin.id,
+    },
+  });
+
+  console.log(
+    `Seed completado: 2 sedes, 1 traslado, 2 turnos, 2 horarios rotativos (${rotationStart.toISODate()} a ${rotationEnd.toISODate()}), 7 usuarios, ${count} marcaciones de ejemplo.`,
+  );
   console.log(`  admin@empresa.com / ${PASSWORDS.admin}`);
   console.log(`  supervisor@empresa.com / ${PASSWORDS.supervisor}`);
   console.log(`  <empleado>@empresa.com / ${PASSWORDS.employee}`);

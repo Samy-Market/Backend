@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Crea (o actualiza) un usuario ADMIN o SUPERVISOR sin tocar ningún otro dato.
  * Pensado para inicializar una base de producción vacía.
