@@ -7,6 +7,7 @@ export interface Mark {
   timestamp: Date;
   isLate: boolean;
   lateMinutes: number;
+  preEntryMinutes: number;
 }
 
 /** Marcación tal como queda guardada. */
@@ -23,6 +24,7 @@ export interface NewMark {
   timestamp: Date;
   isLate: boolean;
   lateMinutes: number;
+  preEntryMinutes: number;
   siteId: string;
 }
 

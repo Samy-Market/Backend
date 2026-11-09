@@ -5,7 +5,7 @@ import { db } from '../../../../shared/infrastructure/prisma/prisma-db';
 import { PrismaService } from '../../../../shared/infrastructure/prisma/prisma.service';
 import { Mark, MarkRepository, NewMark, StoredMark } from '../../application/ports/mark.repository';
 
-export const MARK_SELECT = { id: true, type: true, timestamp: true, isLate: true, lateMinutes: true } as const;
+export const MARK_SELECT = { id: true, type: true, timestamp: true, isLate: true, lateMinutes: true, preEntryMinutes: true } as const;
 
 @Injectable()
 export class PrismaMarkRepository extends MarkRepository {

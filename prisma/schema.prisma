@@ -41,7 +41,7 @@ model User {
   employee  Employee?
   reviews   Justification[] @relation("Reviewer")
   auditLogs AuditLog[]
-  transfers SiteTransfer[] @relation("TransferAuthor")
+  transfers SiteTransfer[]  @relation("TransferAuthor")
 }
 
 /// Sede o local de la empresa (ej. "Matriz", "Sucursal Norte").
@@ -159,18 +159,20 @@ model Employee {
 }
 
 model Attendance {
-  id          String           @id @default(uuid())
-  employeeId  String
-  type        AttendanceType
+  id              String           @id @default(uuid())
+  employeeId      String
+  type            AttendanceType
   /// Siempre asignado por el servidor (UTC)
-  timestamp   DateTime         @default(now())
-  source      AttendanceSource @default(WEB)
+  timestamp       DateTime         @default(now())
+  source          AttendanceSource @default(WEB)
   /// Copia fija calculada al registrar el IN
-  isLate      Boolean          @default(false)
-  lateMinutes Int              @default(0)
+  isLate          Boolean          @default(false)
+  lateMinutes     Int              @default(0)
+  /// Minutos que llegó antes de su hora de entrada (copia fija al registrar el IN). No suman horas.
+  preEntryMinutes Int              @default(0)
   /// Sede donde se registró la marcación (sede base o la del traslado vigente ese día)
-  siteId      String?
-  createdAt   DateTime         @default(now())
+  siteId          String?
+  createdAt       DateTime         @default(now())
 
   employee       Employee        @relation(fields: [employeeId], references: [id])
   site           Site?           @relation(fields: [siteId], references: [id])

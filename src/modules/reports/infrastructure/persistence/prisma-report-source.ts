@@ -27,7 +27,16 @@ export class PrismaReportSource extends ReportSource {
     const rows = await this.prisma.attendance.findMany({
       where: { employeeId: { in: employeeIds }, timestamp: { gte: from, lt: to } },
       orderBy: { timestamp: 'asc' },
-      select: { id: true, employeeId: true, type: true, timestamp: true, isLate: true, lateMinutes: true, siteId: true },
+      select: {
+        id: true,
+        employeeId: true,
+        type: true,
+        timestamp: true,
+        isLate: true,
+        lateMinutes: true,
+        preEntryMinutes: true,
+        siteId: true,
+      },
     });
     const map = new Map<string, ReportMark[]>();
     for (const { employeeId, ...mark } of rows) {

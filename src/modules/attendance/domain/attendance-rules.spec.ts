@@ -2,6 +2,8 @@ import { DateTime } from 'luxon';
 import {
   buildSessions,
   computeLateness,
+  computePreEntry,
+  countedFrom,
   MarkRecord,
   nextMarkType,
   summarizeByDay,
@@ -130,5 +132,37 @@ describe('Horas trabajadas', () => {
     const recs = [mark('IN', '2026-11-05T08:20', { isLate: true, lateMinutes: 20 }), mark('OUT', '2026-11-05T17:00')];
     const [day] = summarizeByDay(recs, ZONE, local('2026-11-05T18:00'));
     expect(day).toMatchObject({ isLate: true, lateMinutes: 20, workedMinutes: 520 });
+  });
+});
+
+describe('Preingreso', () => {
+  const shift = { startTime: '08:00', toleranceMinutes: 10 };
+
+  it('cuenta los minutos que llegó antes de la hora de entrada', () => {
+    expect(computePreEntry(local('2026-11-05T07:58'), shift, ZONE)).toEqual({ preEntryMinutes: 2 });
+    expect(computePreEntry(local('2026-11-05T07:50:40'), shift, ZONE)).toEqual({ preEntryMinutes: 10 });
+  });
+
+  it('no hay preingreso a la hora exacta, tarde o sin turno', () => {
+    expect(computePreEntry(local('2026-11-05T08:00:30'), shift, ZONE)).toEqual({ preEntryMinutes: 0 });
+    expect(computePreEntry(local('2026-11-05T08:05'), shift, ZONE)).toEqual({ preEntryMinutes: 0 });
+    expect(computePreEntry(local('2026-11-05T07:30'), null, ZONE)).toEqual({ preEntryMinutes: 0 });
+  });
+
+  it('las horas se cuentan desde la hora de entrada del turno', () => {
+    const at = local('2026-11-05T07:50:40');
+    expect(countedFrom({ timestamp: at, preEntryMinutes: 10 })).toEqual(local('2026-11-05T08:00'));
+    expect(countedFrom({ timestamp: at, preEntryMinutes: 0 })).toEqual(at);
+
+    const recs = [mark('IN', '2026-11-05T07:50', { preEntryMinutes: 10 }), mark('OUT', '2026-11-05T18:00')];
+    const [day] = summarizeByDay(recs, ZONE, local('2026-11-05T19:00'));
+    expect(day).toMatchObject({ workedMinutes: 600, preEntryMinutes: 10, isLate: false });
+    expect(day.firstIn).toEqual(local('2026-11-05T08:00'));
+  });
+
+  it('la jornada en curso no suma minutos antes de la hora de entrada', () => {
+    const recs = [mark('IN', '2026-11-05T07:45', { preEntryMinutes: 15 })];
+    expect(summarizeByDay(recs, ZONE, local('2026-11-05T07:55'))[0].workedMinutes).toBe(0);
+    expect(summarizeByDay(recs, ZONE, local('2026-11-05T08:30'))[0].workedMinutes).toBe(30);
   });
 });

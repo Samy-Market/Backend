@@ -12,7 +12,12 @@ export interface Presence {
   status: PresenceStatus;
   nextType: MarkType;
   lastMark: { id: string; type: MarkType; timestamp: Date } | null;
+  /** Ingreso que cuenta hoy (la hora de entrada del turno si llegó antes). */
   firstInToday: Date | null;
+  /** Minutos de preingreso de hoy. */
+  preEntryMinutesToday: number;
+  /** Desde cuándo corre el contador de la jornada en curso (null si no está dentro). */
+  countingFrom: Date | null;
   workedMinutesToday: number;
   openSession: boolean;
   isLate: boolean;
@@ -55,6 +60,7 @@ export function presenceOf({ records, last, plan, now, zone, maxSessionHours }: 
   const currentOpen = inside
     ? days.flatMap((d) => d.sessions).find((s) => s.open && !s.stale && s.in < today.startOf('day').toJSDate())
     : undefined;
+  const running = inside ? days.flatMap((d) => d.sessions).find((s) => s.open && !s.stale) : undefined;
   const workedMinutesToday = (todaySummary?.workedMinutes ?? 0) + (currentOpen ? sumWorkedMinutes([currentOpen]) : 0);
 
   let missingAfterStart = false;
@@ -69,6 +75,8 @@ export function presenceOf({ records, last, plan, now, zone, maxSessionHours }: 
     nextType,
     lastMark: last ? { id: last.id, type: last.type, timestamp: last.timestamp } : null,
     firstInToday: todaySummary?.firstIn ?? null,
+    preEntryMinutesToday: todaySummary?.preEntryMinutes ?? 0,
+    countingFrom: running?.countedFrom ?? null,
     workedMinutesToday,
     openSession: inside || !!todaySummary?.openSession,
     isLate: todaySummary?.isLate ?? false,

@@ -12,6 +12,8 @@ export interface MarkRecord {
   timestamp: Date;
   isLate?: boolean;
   lateMinutes?: number;
+  /** Minutos de preingreso: llegó antes de su hora de entrada. No suman a las horas trabajadas. */
+  preEntryMinutes?: number;
 }
 
 export interface ShiftRule {
@@ -83,12 +85,45 @@ export function computeLateness(
   return { isLate: true, lateMinutes: Math.floor(local.diff(start, 'minutes').minutes) };
 }
 
+/**
+ * Preingreso = minutos que el ingreso se adelanta a la hora de entrada del turno (hora local).
+ * Se mide desde el minuto de la marca, así un ingreso a las 07:50:40 en un turno de 08:00 da 10 min
+ * y la jornada se cuenta exactamente desde las 08:00.
+ */
+export function computePreEntry(
+  timestamp: Date,
+  shift: Pick<ShiftRule, 'startTime'> | null | undefined,
+  zone: string,
+): { preEntryMinutes: number } {
+  if (!shift) return { preEntryMinutes: 0 };
+  const local = DateTime.fromJSDate(timestamp, { zone }).startOf('minute');
+  const { hour, minute } = parseHHmm(shift.startTime);
+  const start = local.set({ hour, minute });
+  if (local >= start) return { preEntryMinutes: 0 };
+  return { preEntryMinutes: Math.round(start.diff(local, 'minutes').minutes) };
+}
+
+/**
+ * Desde cuándo se cuentan las horas de un ingreso: la hora de entrada del turno si llegó antes
+ * (preingreso) o la hora real de la marca en otro caso.
+ */
+export function countedFrom(mark: Pick<MarkRecord, 'timestamp' | 'preEntryMinutes'>): Date {
+  const pre = mark.preEntryMinutes ?? 0;
+  if (pre <= 0) return mark.timestamp;
+  const minuteStart = Math.floor(mark.timestamp.getTime() / 60_000) * 60_000;
+  return new Date(minuteStart + pre * 60_000);
+}
+
 // ---------------------------------------------------------------------------
 // Horas trabajadas
 // ---------------------------------------------------------------------------
 
 export interface WorkSession {
+  /** Hora real de la marca de ingreso. */
   in: Date;
+  /** Desde cuándo se cuentan las horas (la hora de entrada del turno si hubo preingreso). */
+  countedFrom: Date;
+  preEntryMinutes: number;
   out: Date | null;
   /** Minutos computados (si está abierta y vigente, hasta `now`; si está abandonada, 0). */
   minutes: number;
@@ -104,31 +139,29 @@ export interface WorkSession {
 export function buildSessions(records: MarkRecord[], now: Date, maxSessionHours = DEFAULT_MAX_SESSION_HOURS): WorkSession[] {
   const sorted = [...records].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   const sessions: WorkSession[] = [];
-  let openIn: Date | null = null;
   const maxMs = maxSessionHours * 3_600_000;
 
-  const closeAsOpen = (start: Date) => {
-    const elapsed = now.getTime() - start.getTime();
-    const stale = elapsed > maxMs;
-    sessions.push({
-      in: start,
-      out: null,
-      open: true,
-      stale,
-      minutes: stale ? 0 : Math.max(0, Math.floor(elapsed / 60_000)),
-    });
+  let openIn: MarkRecord | null = null;
+  const start = (r: MarkRecord) => ({ in: r.timestamp, countedFrom: countedFrom(r), preEntryMinutes: r.preEntryMinutes ?? 0 });
+  const minutesBetween = (from: Date, to: Date) => Math.max(0, Math.floor((to.getTime() - from.getTime()) / 60_000));
+
+  const closeAsOpen = (r: MarkRecord) => {
+    const s = start(r);
+    // "Abandonada" se mide desde la marca real; las horas, desde que empieza a contar.
+    const stale = now.getTime() - r.timestamp.getTime() > maxMs;
+    sessions.push({ ...s, out: null, open: true, stale, minutes: stale ? 0 : minutesBetween(s.countedFrom, now) });
   };
 
   for (const r of sorted) {
     if (r.type === 'IN') {
       if (openIn) {
         // IN consecutivo: la jornada anterior quedó abierta (abandonada).
-        sessions.push({ in: openIn, out: null, open: true, stale: true, minutes: 0 });
+        sessions.push({ ...start(openIn), out: null, open: true, stale: true, minutes: 0 });
       }
-      openIn = r.timestamp;
+      openIn = r;
     } else if (openIn) {
-      const minutes = Math.floor((r.timestamp.getTime() - openIn.getTime()) / 60_000);
-      sessions.push({ in: openIn, out: r.timestamp, open: false, stale: false, minutes });
+      const s = start(openIn);
+      sessions.push({ ...s, out: r.timestamp, open: false, stale: false, minutes: minutesBetween(s.countedFrom, r.timestamp) });
       openIn = null;
     }
   }
@@ -142,7 +175,10 @@ export function sumWorkedMinutes(sessions: WorkSession[]): number {
 
 export interface DaySummary {
   date: string; // yyyy-MM-dd local
+  /** Ingreso que cuenta: la hora de entrada del turno si llegó antes, o la hora real de la marca. */
   firstIn: Date | null;
+  /** Minutos de preingreso del primer ingreso del día (no suman a las horas). */
+  preEntryMinutes: number;
   lastOut: Date | null;
   workedMinutes: number;
   sessions: WorkSession[];
@@ -168,6 +204,7 @@ export function summarizeByDay(records: MarkRecord[], zone: string, now: Date, m
       d = {
         date,
         firstIn: null,
+        preEntryMinutes: 0,
         lastOut: null,
         workedMinutes: 0,
         sessions: [],
@@ -186,7 +223,10 @@ export function summarizeByDay(records: MarkRecord[], zone: string, now: Date, m
     d.sessions.push(s);
     d.workedMinutes += s.minutes;
     if (s.open) d.openSession = true;
-    if (!d.firstIn || s.in < d.firstIn) d.firstIn = s.in;
+    if (!d.firstIn || s.countedFrom < d.firstIn) {
+      d.firstIn = s.countedFrom;
+      d.preEntryMinutes = s.preEntryMinutes;
+    }
     if (s.out && (!d.lastOut || s.out > d.lastOut)) d.lastOut = s.out;
   }
 

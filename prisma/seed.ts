@@ -1,7 +1,7 @@
 import { PrismaClient, Role, AttendanceType } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { DateTime } from 'luxon';
-import { computeLateness } from '../src/modules/attendance/domain/attendance-rules';
+import { computeLateness, computePreEntry } from '../src/modules/attendance/domain/attendance-rules';
 
 const prisma = new PrismaClient();
 const ZONE = process.env.APP_TIMEZONE || 'America/Guayaquil';
@@ -175,7 +175,7 @@ async function main() {
         .set({ hour: eh, minute: em })
         .plus({ minutes: rnd(-10, 30) })
         .toJSDate();
-      const late = computeLateness(inAt, shift, ZONE);
+      const late = { ...computeLateness(inAt, shift, ZONE), ...computePreEntry(inAt, shift, ZONE) };
       await prisma.attendance.create({
         data: { employeeId: employee.id, type: AttendanceType.IN, timestamp: inAt, ...late, siteId: site.id },
       });

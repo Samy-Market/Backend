@@ -1,165 +1,250 @@
 import ExcelJS from 'exceljs';
 import { DateTime } from 'luxon';
-import { AttendanceReport } from '../../domain/attendance-report';
+import { AttendanceReport, EmployeeReport, ReportDay } from '../../domain/attendance-report';
+import { DayPlanView } from '../../../schedules/domain/schedule-plan';
 
 const BRAND = 'FF0F766E';
-
-function planLabel(p: AttendanceReport['employees'][number]['days'][number]['plan']) {
-  if (p.kind === 'WORK' && p.shift) return `${p.shift.name} ${p.shift.startTime}–${p.shift.endTime}`;
-  return p.kind === 'REST' ? 'Descanso' : 'Sin horario';
-}
+const MUTED = 'FF64748B';
+const RED = 'FFB91C1C';
+const DURATION = '[h]:mm';
 
 const localTime = (d: Date | null, zone: string) => (d ? DateTime.fromJSDate(d, { zone }).toFormat('HH:mm') : '');
 const localDateTime = (d: Date, zone: string) => DateTime.fromJSDate(d, { zone }).toFormat('dd/MM/yyyy HH:mm:ss');
-/** Minutos → fracción de día, para que Excel lo muestre con formato [h]:mm y se pueda sumar. */
+/** Minutos → fracción de día, para que Excel lo muestre como horas:minutos ([h]:mm) y se pueda sumar. */
 const asExcelDuration = (minutes: number) => minutes / (24 * 60);
 const asDate = (key: string) => {
   const [y, m, d] = key.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d));
 };
+const hoursDecimal = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function styleHeader(ws: ExcelJS.Worksheet) {
-  const row = ws.getRow(1);
-  row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-  row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND } };
-  row.alignment = { vertical: 'middle' };
-  row.height = 20;
-  ws.views = [{ state: 'frozen', ySplit: 1 }];
-  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columnCount } };
+function planLabel(p: DayPlanView) {
+  if (p.kind === 'WORK' && p.shift) return `${p.shift.name} ${p.shift.startTime}–${p.shift.endTime}`;
+  return p.kind === 'REST' ? 'Descanso' : 'Sin horario';
 }
 
+/** "Noviembre 2026" si el rango es un mes completo; si no, "01/11/2026 al 15/11/2026". */
+export function periodLabel(from: string, to: string): string {
+  const f = DateTime.fromISO(from).setLocale('es');
+  const t = DateTime.fromISO(to);
+  if (f.day === 1 && t.hasSame(f, 'month') && t.day === f.daysInMonth) return capitalize(f.toFormat('LLLL yyyy'));
+  return `${f.toFormat('dd/MM/yyyy')} al ${t.toFormat('dd/MM/yyyy')}`;
+}
+
+/** Nombre de hoja válido en Excel (máx. 31 caracteres, sin : \ / ? * [ ]) y sin repetir. */
+export function sheetName(name: string, used: Set<string>): string {
+  const base =
+    name
+      .replace(/[:\\/?*[\]']/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 31) || 'Colaborador';
+  let candidate = base;
+  for (let n = 2; used.has(candidate.toLowerCase()); n++) {
+    const suffix = ` (${n})`;
+    candidate = base.slice(0, 31 - suffix.length).trim() + suffix;
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
+function styleHeaderRow(row: ExcelJS.Row) {
+  row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND } };
+  row.alignment = { vertical: 'middle', wrapText: true };
+  row.height = 32;
+}
+
+/**
+ * Libro del reporte: una hoja "Resumen" con los totales de cada colaborador y una hoja por
+ * colaborador con todos sus días (incluye ausencias y descansos con 0).
+ */
 export async function buildAttendanceWorkbook(report: AttendanceReport): Promise<Buffer> {
-  const zone = report.timezone;
+  const period = periodLabel(report.from, report.to);
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Control de Asistencia';
   wb.created = report.generatedAt;
 
-  // --- Resumen por empleado ---------------------------------------------------
-  const summary = wb.addWorksheet('Resumen');
-  summary.columns = [
-    { header: 'Empleado', key: 'name', width: 28 },
+  // Primero se reservan los nombres de hoja para enlazarlos desde el resumen.
+  const used = new Set<string>(['resumen']);
+  const sheets = report.employees.map((e) => ({ e, name: sheetName(e.employee.fullName, used) }));
+
+  buildSummary(wb, report, period, sheets);
+  for (const { e, name } of sheets) buildEmployeeSheet(wb, name, e, report, period);
+
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+// --- Resumen ---------------------------------------------------------------
+
+function buildSummary(wb: ExcelJS.Workbook, report: AttendanceReport, period: string, sheets: { e: EmployeeReport; name: string }[]) {
+  const zone = report.timezone;
+  const ws = wb.addWorksheet('Resumen');
+  ws.columns = [
+    { header: 'Colaborador', key: 'name', width: 28 },
     { header: 'Cédula', key: 'doc', width: 14 },
     { header: 'Cargo', key: 'position', width: 24 },
     { header: 'Sede base', key: 'site', width: 20 },
     { header: 'Horario(s)', key: 'shift', width: 26 },
-    { header: 'Días programados', key: 'scheduled', width: 16 },
-    { header: 'Días trabajados', key: 'days', width: 15 },
+    { header: 'Días programados', key: 'scheduled', width: 12 },
+    { header: 'Días trabajados', key: 'days', width: 12 },
     { header: 'Ausencias', key: 'absences', width: 11 },
-    { header: 'Horas trabajadas', key: 'hours', width: 16, style: { numFmt: '[h]:mm' } },
-    { header: 'Horas (decimal)', key: 'hoursDec', width: 15, style: { numFmt: '0.00' } },
-    { header: 'Días con atraso', key: 'lateDays', width: 15 },
-    { header: 'Minutos de atraso', key: 'lateMin', width: 17 },
-    { header: 'Jornadas abiertas', key: 'open', width: 17 },
+    { header: 'Horas trabajadas', key: 'hours', width: 12, style: { numFmt: DURATION } },
+    { header: 'Horas (decimal)', key: 'hoursDec', width: 12, style: { numFmt: '0.00' } },
+    { header: 'Días con atraso', key: 'lateDays', width: 11 },
+    { header: 'Atraso (h:mm)', key: 'late', width: 12, style: { numFmt: DURATION } },
+    { header: 'Horas suplementarias (h:mm)', key: 'overtime', width: 15, style: { numFmt: DURATION } },
+    { header: 'Días con preingreso', key: 'preDays', width: 12 },
+    { header: 'Minutos de preingreso', key: 'preMin', width: 12 },
+    { header: 'Jornadas abiertas', key: 'open', width: 11 },
   ];
-  for (const e of report.employees) {
-    summary.addRow({
-      name: e.employee.fullName + (e.employee.active ? '' : ' (inactivo)'),
+  styleHeaderRow(ws.getRow(1));
+
+  const totalsRow = (t: AttendanceReport['totals'] | EmployeeReport['totals']) => ({
+    scheduled: t.scheduledDays,
+    days: t.daysWorked,
+    absences: t.absences,
+    hours: asExcelDuration(t.workedMinutes),
+    hoursDec: hoursDecimal(t.workedMinutes),
+    lateDays: t.lateDays,
+    late: asExcelDuration(t.lateMinutes),
+    overtime: asExcelDuration(t.overtimeMinutes),
+    preDays: t.preEntryDays,
+    preMin: t.preEntryMinutes,
+    open: t.openSessions,
+  });
+
+  for (const { e, name } of sheets) {
+    const label = e.employee.fullName + (e.employee.active ? '' : ' (inactivo)');
+    const row = ws.addRow({
+      // El nombre lleva a la hoja del colaborador.
+      name: { text: label, hyperlink: `#'${name}'!A1` },
       doc: e.employee.documentId,
       position: e.employee.position,
       site: e.employee.homeSite.name,
       shift: e.employee.schedules.join(', ') || 'Sin horario',
-      scheduled: e.totals.scheduledDays,
-      days: e.totals.daysWorked,
-      absences: e.totals.absences,
-      hours: asExcelDuration(e.totals.workedMinutes),
-      hoursDec: Math.round((e.totals.workedMinutes / 60) * 100) / 100,
-      lateDays: e.totals.lateDays,
-      lateMin: e.totals.lateMinutes,
-      open: e.totals.openSessions,
+      ...totalsRow(e.totals),
     });
+    row.getCell('name').font = { color: { argb: BRAND }, underline: true };
   }
-  styleHeader(summary);
-  const totalRow = summary.addRow({
-    name: 'TOTAL',
-    scheduled: report.totals.scheduledDays,
-    days: report.totals.daysWorked,
-    absences: report.totals.absences,
-    hours: asExcelDuration(report.totals.workedMinutes),
-    hoursDec: Math.round((report.totals.workedMinutes / 60) * 100) / 100,
-    lateDays: report.totals.lateDays,
-    lateMin: report.totals.lateMinutes,
-    open: report.totals.openSessions,
+
+  const total = ws.addRow({ name: 'TOTAL', ...totalsRow(report.totals) });
+  total.font = { bold: true };
+  total.border = { top: { style: 'thin' } };
+
+  ws.addRow([]);
+  const note = (text: string) => (ws.addRow([text]).font = { italic: true, color: { argb: MUTED } });
+  note(`Período: ${period} · Sede: ${report.site?.name ?? 'Todas'} · Zona horaria: ${zone}`);
+  note('Horas suplementarias: tiempo trabajado después de la hora de salida del turno, o todo lo trabajado en un día de descanso.');
+  note('Preingreso: minutos que llegó antes de su hora de entrada; no suman a las horas trabajadas.');
+  note(`Generado: ${localDateTime(report.generatedAt, zone)}`);
+
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columnCount } };
+}
+
+// --- Una hoja por colaborador ----------------------------------------------
+
+const EMPLOYEE_HEADERS = [
+  'Fecha',
+  'Día',
+  'Turno',
+  'Sede',
+  'Ingreso',
+  'Salida',
+  'Horas trabajadas',
+  'Atraso (h:mm)',
+  'Horas suplementarias (h:mm)',
+  'Observación',
+];
+
+function buildEmployeeSheet(wb: ExcelJS.Workbook, name: string, e: EmployeeReport, report: AttendanceReport, period: string) {
+  const zone = report.timezone;
+  const today = DateTime.fromJSDate(report.generatedAt, { zone }).toISODate()!;
+  const ws = wb.addWorksheet(name);
+  ws.columns = [
+    { key: 'date', width: 12 },
+    { key: 'weekday', width: 11 },
+    { key: 'plan', width: 22 },
+    { key: 'site', width: 18 },
+    { key: 'in', width: 10 },
+    { key: 'out', width: 10 },
+    { key: 'hours', width: 12 },
+    { key: 'late', width: 11 },
+    { key: 'overtime', width: 15 },
+    { key: 'notes', width: 34 },
+  ];
+  const cols = EMPLOYEE_HEADERS.length;
+
+  const title = ws.addRow([`${e.employee.fullName}${e.employee.active ? '' : ' (inactivo)'} · ${period}`]);
+  title.font = { bold: true, size: 14 };
+  ws.mergeCells(title.number, 1, title.number, cols);
+  const schedules = e.employee.schedules.join(', ') || 'Sin horario';
+  const info = ws.addRow([
+    `Cédula: ${e.employee.documentId} · Cargo: ${e.employee.position} · Sede base: ${e.employee.homeSite.name} · Horario: ${schedules}`,
+  ]);
+  info.font = { color: { argb: MUTED } };
+  ws.mergeCells(info.number, 1, info.number, cols);
+  ws.addRow([]);
+
+  const header = ws.addRow(EMPLOYEE_HEADERS);
+  styleHeaderRow(header);
+  const firstDataRow = header.number + 1;
+
+  const byDate = new Map(e.days.map((d) => [d.date, d]));
+  for (const plan of e.calendar) {
+    const d = byDate.get(plan.date);
+    const row = ws.addRow({
+      date: asDate(plan.date),
+      weekday: capitalize(DateTime.fromISO(plan.date).setLocale('es').toFormat('cccc')),
+      plan: planLabel(plan),
+      site: d ? d.site.name + (d.site.id !== e.employee.homeSite.id ? ' (traslado)' : '') : '',
+      in: localTime(d?.firstIn ?? null, zone) || '—',
+      out: localTime(d?.lastOut ?? null, zone) || '—',
+      hours: asExcelDuration(d?.workedMinutes ?? 0),
+      late: asExcelDuration(d?.isLate ? d.lateMinutes : 0),
+      overtime: asExcelDuration(d?.overtimeMinutes ?? 0),
+      notes: notesFor(plan, d, today),
+    });
+    row.getCell('date').numFmt = 'dd/mm/yyyy';
+    for (const k of ['hours', 'late', 'overtime']) row.getCell(k).numFmt = DURATION;
+    for (const k of ['in', 'out']) row.getCell(k).alignment = { horizontal: 'center' };
+
+    if (d?.absent) row.getCell('notes').font = { color: { argb: RED }, bold: true };
+    else if (!d) row.font = { color: { argb: MUTED } };
+    if (d?.isLate) row.getCell('late').font = { color: { argb: RED }, bold: true };
+    if (d && d.overtimeMinutes > 0) row.getCell('overtime').font = { color: { argb: BRAND }, bold: true };
+  }
+
+  const lastDataRow = ws.lastRow!.number;
+  const sum = (col: string, minutes: number): ExcelJS.CellValue =>
+    lastDataRow >= firstDataRow ? { formula: `SUM(${col}${firstDataRow}:${col}${lastDataRow})`, result: asExcelDuration(minutes) } : 0;
+  const t = e.totals;
+  const total = ws.addRow({
+    date: 'TOTAL',
+    hours: sum('G', t.workedMinutes),
+    late: sum('H', t.lateMinutes),
+    overtime: sum('I', t.overtimeMinutes),
+    notes: `Días trabajados: ${t.daysWorked} · Ausencias: ${t.absences}`,
   });
-  totalRow.font = { bold: true };
-  totalRow.border = { top: { style: 'thin' } };
-  summary.addRow([]);
-  summary.addRow([`Período: ${report.from} a ${report.to} · Sede: ${report.site?.name ?? 'Todas'} · Zona horaria: ${zone}`]).font = {
-    italic: true,
-    color: { argb: 'FF64748B' },
-  };
-  summary.addRow([`Generado: ${localDateTime(report.generatedAt, zone)}`]).font = { italic: true, color: { argb: 'FF64748B' } };
+  total.font = { bold: true };
+  total.border = { top: { style: 'thin' } };
+  for (const k of ['hours', 'late', 'overtime']) total.getCell(k).numFmt = DURATION;
 
-  // --- Detalle por día --------------------------------------------------------
-  const daily = wb.addWorksheet('Detalle por día');
-  daily.columns = [
-    { header: 'Fecha', key: 'date', width: 12, style: { numFmt: 'dd/mm/yyyy' } },
-    { header: 'Empleado', key: 'name', width: 28 },
-    { header: 'Cédula', key: 'doc', width: 14 },
-    { header: 'Sede', key: 'site', width: 20 },
-    { header: 'Turno programado', key: 'plan', width: 24 },
-    { header: 'Primer ingreso', key: 'in', width: 15 },
-    { header: 'Última salida', key: 'out', width: 14 },
-    { header: 'Horas trabajadas', key: 'hours', width: 16, style: { numFmt: '[h]:mm' } },
-    { header: 'Atraso', key: 'late', width: 9 },
-    { header: 'Minutos de atraso', key: 'lateMin', width: 17 },
-    { header: 'Jornada abierta', key: 'open', width: 15 },
-    { header: 'Ausente', key: 'absent', width: 9 },
-    { header: 'N.º marcaciones', key: 'marks', width: 15 },
-  ];
-  const rows = report.employees
-    .flatMap((e) => e.days.map((d) => ({ e, d })))
-    .sort((a, b) => a.d.date.localeCompare(b.d.date) || a.e.employee.fullName.localeCompare(b.e.employee.fullName));
-  for (const { e, d } of rows) {
-    const row = daily.addRow({
-      date: asDate(d.date),
-      name: e.employee.fullName,
-      doc: e.employee.documentId,
-      site: d.site.name + (d.site.id !== e.employee.homeSite.id ? ' (traslado)' : ''),
-      plan: planLabel(d.plan),
-      in: localTime(d.firstIn, zone),
-      out: localTime(d.lastOut, zone),
-      hours: asExcelDuration(d.workedMinutes),
-      late: d.isLate ? 'Sí' : 'No',
-      lateMin: d.isLate ? d.lateMinutes : 0,
-      open: d.openSession ? 'Sí' : 'No',
-      absent: d.absent ? 'Sí' : 'No',
-      marks: d.marks.length,
-    });
-    if (d.isLate) row.getCell('late').font = { color: { argb: 'FFB91C1C' }, bold: true };
-    if (d.openSession) row.getCell('open').font = { color: { argb: 'FFB45309' }, bold: true };
-    if (d.absent) row.getCell('absent').font = { color: { argb: 'FFB91C1C' }, bold: true };
+  ws.views = [{ state: 'frozen', ySplit: header.number }];
+}
+
+function notesFor(plan: DayPlanView, d: ReportDay | undefined, today: string): string {
+  if (!d) {
+    if (plan.kind === 'WORK') return plan.date === today ? 'Aún no marca' : 'No marcó';
+    return plan.kind === 'REST' ? 'Descanso' : 'Sin horario asignado';
   }
-  styleHeader(daily);
-
-  // --- Marcaciones (registro crudo) ------------------------------------------
-  const marks = wb.addWorksheet('Marcaciones');
-  marks.columns = [
-    { header: 'Fecha', key: 'date', width: 12, style: { numFmt: 'dd/mm/yyyy' } },
-    { header: 'Hora', key: 'time', width: 10 },
-    { header: 'Empleado', key: 'name', width: 28 },
-    { header: 'Cédula', key: 'doc', width: 14 },
-    { header: 'Sede', key: 'site', width: 20 },
-    { header: 'Tipo', key: 'type', width: 10 },
-    { header: 'Atraso (min)', key: 'late', width: 13 },
-    { header: 'Fecha y hora UTC', key: 'utc', width: 22 },
-  ];
-  const markRows = report.employees
-    .flatMap((e) => e.days.flatMap((d) => d.marks.map((m) => ({ e, m, d }))))
-    .sort((a, b) => a.m.timestamp.getTime() - b.m.timestamp.getTime());
-  for (const { e, m, d } of markRows) {
-    const local = DateTime.fromJSDate(m.timestamp, { zone });
-    marks.addRow({
-      date: asDate(local.toISODate()!),
-      time: local.toFormat('HH:mm:ss'),
-      name: e.employee.fullName,
-      doc: e.employee.documentId,
-      site: d.site.name,
-      type: m.type === 'IN' ? 'Ingreso' : 'Salida',
-      late: m.isLate ? m.lateMinutes : '',
-      utc: m.timestamp.toISOString(),
-    });
-  }
-  styleHeader(marks);
-
-  return Buffer.from(await wb.xlsx.writeBuffer());
+  if (d.absent) return 'No marcó';
+  const notes: string[] = [];
+  if (plan.kind === 'REST') notes.push('Trabajó en día de descanso');
+  if (d.isLate) notes.push(`Atraso ${d.lateMinutes} min`);
+  if (d.preEntryMinutes > 0) notes.push(`Preingreso ${d.preEntryMinutes} min`);
+  if (d.openSession) notes.push('Sin marca de salida');
+  return notes.join(' · ');
 }

@@ -10,7 +10,15 @@ import { SchedulePlanner } from '../../schedules/application/schedule-planner';
 import { toPlanView } from '../../schedules/domain/schedule-plan';
 import { SiteLocator } from '../../sites/application/site-locator';
 import { toDaySiteView } from '../../sites/domain/site-rules';
-import { computeLateness, DaySummary, MarkType, nextMarkType, summarizeByDay, validateRequestedType } from '../domain/attendance-rules';
+import {
+  computeLateness,
+  computePreEntry,
+  DaySummary,
+  MarkType,
+  nextMarkType,
+  summarizeByDay,
+  validateRequestedType,
+} from '../domain/attendance-rules';
 import { Presence, presenceOf, PresenceStatus, statusWindowStart } from '../domain/presence';
 import { AttendanceRoster } from './ports/attendance-roster';
 import { Mark, MarkRepository } from './ports/mark.repository';
@@ -48,19 +56,20 @@ export class AttendanceService {
         if (error) throw new ConflictError(error);
 
         const today = this.clock.today();
-        let late = { isLate: false, lateMinutes: 0 };
-        // Solo el primer ingreso del día puede contar como atraso, medido contra el turno que le toca HOY.
+        let entry = { isLate: false, lateMinutes: 0, preEntryMinutes: 0 };
+        // Solo el primer ingreso del día puede contar como atraso o preingreso, medido contra el turno que le toca HOY.
         if (type === 'IN') {
           const dayStart = DateTime.fromJSDate(now, { zone: APP_TIMEZONE }).startOf('day').toJSDate();
           if ((await this.marks.countIns(employeeId, dayStart, now, tx)) === 0) {
             const plan = await this.planner.planForEmployee(employeeId, today);
-            late = computeLateness(now, plan.kind === 'WORK' ? plan.shift : null, APP_TIMEZONE);
+            const shift = plan.kind === 'WORK' ? plan.shift : null;
+            entry = { ...computeLateness(now, shift, APP_TIMEZONE), ...computePreEntry(now, shift, APP_TIMEZONE) };
           }
         }
 
         // La marcación queda en la sede donde trabaja hoy (base o traslado vigente).
         const site = (await this.locator.sitesForDay([employee], today)).get(employee.id)!;
-        const attendance = await this.marks.create({ employeeId, type, timestamp: now, ...late, siteId: site.siteId }, tx);
+        const attendance = await this.marks.create({ employeeId, type, timestamp: now, ...entry, siteId: site.siteId }, tx);
         return { attendance, employee };
       },
       { lockKey: employeeId },
@@ -77,6 +86,7 @@ export class AttendanceService {
       timestamp: attendance.timestamp,
       isLate: attendance.isLate,
       lateMinutes: attendance.lateMinutes,
+      preEntryMinutes: attendance.preEntryMinutes,
       status,
     });
     return { attendance, employee: who, status };
@@ -209,6 +219,7 @@ function emptyDay(date: string): DaySummary {
   return {
     date,
     firstIn: null,
+    preEntryMinutes: 0,
     lastOut: null,
     workedMinutes: 0,
     sessions: [],

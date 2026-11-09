@@ -1,24 +1,30 @@
 import ExcelJS from 'exceljs';
-import { buildAttendanceWorkbook } from './attendance-workbook';
-import { AttendanceReport } from '../../domain/attendance-report';
+import { buildAttendanceWorkbook, periodLabel, sheetName } from './attendance-workbook';
+import { AttendanceReport, ReportTotals } from '../../domain/attendance-report';
+
+const morning = { id: 's1', name: 'Mañana', startTime: '08:00', endTime: '18:00', toleranceMinutes: 10 };
+const afternoon = { id: 's2', name: 'Tarde', startTime: '11:00', endTime: '21:00', toleranceMinutes: 10 };
+const totals: ReportTotals = {
+  workedMinutes: 586,
+  overtimeMinutes: 14,
+  daysWorked: 1,
+  lateDays: 1,
+  lateMinutes: 14,
+  preEntryDays: 0,
+  preEntryMinutes: 0,
+  openSessions: 0,
+  marks: 2,
+  scheduledDays: 2,
+  absences: 1,
+};
 
 const report: AttendanceReport = {
-  from: '2026-11-03',
-  to: '2026-11-03',
+  from: '2026-11-02',
+  to: '2026-11-04',
   timezone: 'America/Guayaquil',
-  generatedAt: new Date('2026-11-04T12:00:00Z'),
+  generatedAt: new Date('2026-11-05T12:00:00Z'),
   site: null,
-  totals: {
-    employees: 1,
-    workedMinutes: 540,
-    daysWorked: 1,
-    lateDays: 1,
-    lateMinutes: 14,
-    openSessions: 0,
-    marks: 2,
-    scheduledDays: 2,
-    absences: 1,
-  },
+  totals: { employees: 1, ...totals },
   employees: [
     {
       employee: {
@@ -30,43 +36,42 @@ const report: AttendanceReport = {
         schedules: ['Rotación A'],
         homeSite: { id: 'm', name: 'Matriz' },
       },
-      totals: { workedMinutes: 540, daysWorked: 1, lateDays: 1, lateMinutes: 14, openSessions: 0, marks: 2, scheduledDays: 2, absences: 1 },
+      totals,
+      calendar: [
+        { date: '2026-11-02', kind: 'REST', shift: null, scheduleName: 'Rotación A' },
+        { date: '2026-11-03', kind: 'WORK', shift: morning, scheduleName: 'Rotación A' },
+        { date: '2026-11-04', kind: 'WORK', shift: afternoon, scheduleName: 'Rotación A' },
+      ],
       days: [
         {
           date: '2026-11-03',
           firstIn: new Date('2026-11-03T13:14:00Z'),
-          lastOut: new Date('2026-11-03T22:14:00Z'),
-          workedMinutes: 540,
+          preEntryMinutes: 0,
+          lastOut: new Date('2026-11-03T23:14:00Z'),
+          workedMinutes: 600,
+          overtimeMinutes: 14,
           isLate: true,
           lateMinutes: 14,
           openSession: false,
-          plan: {
-            date: '2026-11-03',
-            kind: 'WORK',
-            scheduleName: 'Rotación A',
-            shift: { id: 's1', name: 'Mañana', startTime: '08:00', endTime: '18:00', toleranceMinutes: 10 },
-          },
+          plan: { date: '2026-11-03', kind: 'WORK', scheduleName: 'Rotación A', shift: morning },
           absent: false,
           site: { id: 'm', name: 'Matriz' },
           marks: [
-            { id: 'a1', type: 'IN', timestamp: new Date('2026-11-03T13:14:00Z'), isLate: true, lateMinutes: 14 },
-            { id: 'a2', type: 'OUT', timestamp: new Date('2026-11-03T22:14:00Z'), isLate: false, lateMinutes: 0 },
+            { id: 'a1', type: 'IN', timestamp: new Date('2026-11-03T13:14:00Z'), isLate: true, lateMinutes: 14, preEntryMinutes: 0 },
+            { id: 'a2', type: 'OUT', timestamp: new Date('2026-11-03T23:14:00Z'), isLate: false, lateMinutes: 0, preEntryMinutes: 0 },
           ],
         },
         {
           date: '2026-11-04',
           firstIn: null,
+          preEntryMinutes: 0,
           lastOut: null,
           workedMinutes: 0,
+          overtimeMinutes: 0,
           isLate: false,
           lateMinutes: 0,
           openSession: false,
-          plan: {
-            date: '2026-11-04',
-            kind: 'WORK',
-            scheduleName: 'Rotación A',
-            shift: { id: 's2', name: 'Tarde', startTime: '11:00', endTime: '21:00', toleranceMinutes: 10 },
-          },
+          plan: { date: '2026-11-04', kind: 'WORK', scheduleName: 'Rotación A', shift: afternoon },
           absent: true,
           site: { id: 'n', name: 'Norte' },
           marks: [],
@@ -76,42 +81,84 @@ const report: AttendanceReport = {
   ],
 };
 
+/** Las duraciones se guardan como fracción de día con formato [h]:mm; exceljs las relee como fecha base 1899-12-30. */
+const asHHmm = (v: ExcelJS.CellValue) => {
+  const raw = v && typeof v === 'object' && 'result' in v ? v.result : v;
+  if (typeof raw === 'number') {
+    const m = Math.round(raw * 24 * 60);
+    return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+  }
+  return (raw as Date).toISOString().slice(11, 16).replace(/^0/, '');
+};
+
 describe('Exportación a Excel', () => {
-  it('genera las 3 hojas con horas locales y duraciones sumables', async () => {
+  it('tiene la hoja Resumen y una hoja por colaborador', async () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(await buildAttendanceWorkbook(report));
-    expect(wb.worksheets.map((w) => w.name)).toEqual(['Resumen', 'Detalle por día', 'Marcaciones']);
-
-    const daily = wb.getWorksheet('Detalle por día')!;
-    const col = (name: string) => (daily.getRow(1).values as string[]).indexOf(name);
-    expect(daily.getRow(2).getCell(col('Turno programado')).value).toBe('Mañana 08:00–18:00');
-    expect(daily.getRow(2).getCell(col('Primer ingreso')).value).toBe('08:14'); // 13:14 UTC → 08:14 Guayaquil
-    expect(daily.getRow(2).getCell(col('Última salida')).value).toBe('17:14');
-    // Se guarda como fracción de día (9 h = 0,375) con formato [h]:mm; exceljs lo relee como fecha base 1899-12-30.
-    const hours = daily.getRow(2).getCell(col('Horas trabajadas'));
-    expect(hours.numFmt).toBe('[h]:mm');
-    expect((hours.value as Date).toISOString()).toBe('1899-12-30T09:00:00.000Z');
-    expect(daily.getRow(2).getCell(col('Atraso')).value).toBe('Sí');
-    // Día de trabajo sin marcaciones → ausencia
-    expect(daily.getRow(3).getCell(col('Turno programado')).value).toBe('Tarde 11:00–21:00');
-    expect(daily.getRow(3).getCell(col('Ausente')).value).toBe('Sí');
-    // Sede del día; si no es la base, se indica el traslado
-    expect(daily.getRow(2).getCell(col('Sede')).value).toBe('Matriz');
-    expect(daily.getRow(3).getCell(col('Sede')).value).toBe('Norte (traslado)');
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Resumen', 'Ana Torres']);
 
     const summary = wb.getWorksheet('Resumen')!;
     const scol = (name: string) => (summary.getRow(1).values as string[]).indexOf(name);
-    expect(summary.getRow(2).getCell(scol('Horas (decimal)')).value).toBe(9);
-    expect(summary.getRow(2).getCell(scol('Horario(s)')).value).toBe('Rotación A');
+    expect(summary.getRow(2).getCell(scol('Colaborador')).text).toBe('Ana Torres');
+    expect(summary.getRow(2).getCell(scol('Horas (decimal)')).value).toBe(9.77);
     expect(summary.getRow(2).getCell(scol('Días programados')).value).toBe(2);
     expect(summary.getRow(2).getCell(scol('Ausencias')).value).toBe(1);
-    expect(summary.getRow(2).getCell(scol('Sede base')).value).toBe('Matriz');
+    expect(asHHmm(summary.getRow(2).getCell(scol('Atraso (h:mm)')).value)).toBe('0:14');
+    expect(asHHmm(summary.getRow(2).getCell(scol('Horas suplementarias (h:mm)')).value)).toBe('0:14');
     expect(summary.getRow(3).getCell(1).value).toBe('TOTAL');
+  });
 
-    const marks = wb.getWorksheet('Marcaciones')!;
-    expect(marks.rowCount).toBe(3);
-    const mcol = (name: string) => (marks.getRow(1).values as string[]).indexOf(name);
-    expect(marks.getRow(2).getCell(mcol('Tipo')).value).toBe('Ingreso');
-    expect(marks.getRow(2).getCell(mcol('Sede')).value).toBe('Matriz');
+  it('la hoja del colaborador lista todos los días, con 0 cuando no marcó', async () => {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await buildAttendanceWorkbook(report));
+    const ws = wb.getWorksheet('Ana Torres')!;
+    expect(ws.getRow(1).getCell(1).value).toBe('Ana Torres · 02/11/2026 al 04/11/2026');
+
+    const headerRow = 4;
+    const col = (name: string) => (ws.getRow(headerRow).values as string[]).indexOf(name);
+    const cell = (day: number, name: string) => ws.getRow(headerRow + day).getCell(col(name));
+
+    // Día 1: descanso sin marcas
+    expect(cell(1, 'Día').value).toBe('Lunes');
+    expect(cell(1, 'Observación').value).toBe('Descanso');
+    expect(asHHmm(cell(1, 'Horas trabajadas').value)).toBe('0:00');
+
+    // Día 2: trabajó con atraso y se quedó después de la salida
+    expect(cell(2, 'Turno').value).toBe('Mañana 08:00–18:00');
+    expect(cell(2, 'Ingreso').value).toBe('08:14'); // 13:14 UTC → 08:14 Guayaquil
+    expect(cell(2, 'Salida').value).toBe('18:14');
+    expect(cell(2, 'Horas trabajadas').numFmt).toBe('[h]:mm');
+    expect(asHHmm(cell(2, 'Horas trabajadas').value)).toBe('10:00');
+    expect(asHHmm(cell(2, 'Atraso (h:mm)').value)).toBe('0:14');
+    expect(asHHmm(cell(2, 'Horas suplementarias (h:mm)').value)).toBe('0:14');
+    expect(cell(2, 'Observación').value).toBe('Atraso 14 min');
+
+    // Día 3: tenía turno y no marcó → todo en 0
+    expect(cell(3, 'Ingreso').value).toBe('—');
+    expect(asHHmm(cell(3, 'Horas trabajadas').value)).toBe('0:00');
+    expect(asHHmm(cell(3, 'Atraso (h:mm)').value)).toBe('0:00');
+    expect(cell(3, 'Observación').value).toBe('No marcó');
+
+    // Totales con fórmula
+    const total = ws.getRow(headerRow + 4);
+    expect(total.getCell(1).value).toBe('TOTAL');
+    expect(total.getCell(col('Horas trabajadas')).value).toMatchObject({ formula: 'SUM(G5:G7)' });
+  });
+});
+
+describe('Nombres y período', () => {
+  it('nombres de hoja válidos y sin repetir', () => {
+    const used = new Set<string>(['resumen']);
+    expect(sheetName('Ana Torres', used)).toBe('Ana Torres');
+    expect(sheetName('ana torres', used)).toBe('ana torres (2)');
+    expect(sheetName('María José Fernández de la Cruz Montesdeoca', used)).toHaveLength(31);
+    expect(sheetName('Pérez / López [temp]', used)).toBe('Pérez López temp');
+    expect(sheetName('Resumen', used)).toBe('Resumen (2)');
+  });
+
+  it('el período de un mes completo se muestra como mes', () => {
+    expect(periodLabel('2026-11-01', '2026-11-30')).toBe('Noviembre 2026');
+    expect(periodLabel('2026-02-01', '2026-02-28')).toBe('Febrero 2026');
+    expect(periodLabel('2026-11-01', '2026-11-07')).toBe('01/11/2026 al 07/11/2026');
   });
 });
