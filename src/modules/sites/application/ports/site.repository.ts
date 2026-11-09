@@ -14,7 +14,6 @@ export interface SiteUsage {
 }
 
 export abstract class SiteRepository {
-  /** Sedes con empleados activos e ingresos por traslado en `today`. */
   abstract list(today: string): Promise<(Site & { activeEmployees: number; incomingTransfersToday: number })[]>;
   abstract findById(id: string): Promise<Site | null>;
   abstract names(): Promise<Map<string, string>>;

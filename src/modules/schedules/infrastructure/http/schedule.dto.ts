@@ -25,7 +25,6 @@ export class ScheduleDayDto {
   @Max(7, { message: 'El día de la semana debe ser un número del 1 (lunes) al 7 (domingo).' })
   weekday: number;
 
-  /** null = descanso */
   @ValidateIf((_o, v) => v !== null)
   @IsUUID('4', { message: 'Turno inválido.' })
   shiftId: string | null;
@@ -97,7 +96,6 @@ export class AssignScheduleDto {
   @Matches(DATE_REGEX, { message: 'La fecha de inicio debe tener el formato AAAA-MM-DD.' })
   startDate: string;
 
-  /** Opcional: sin fecha de fin el horario queda vigente hasta que se asigne otro. */
   @IsOptional()
   @ValidateIf((_o, v) => v !== null)
   @Matches(DATE_REGEX, { message: 'La fecha de fin debe tener el formato AAAA-MM-DD.' })
@@ -118,4 +116,13 @@ export class RangeQueryDto {
   @IsOptional()
   @Matches(DATE_REGEX, { message: 'La fecha final debe tener el formato AAAA-MM-DD.' })
   to?: string;
+}
+
+export class UnassignDto {
+  @IsArray({ message: 'Indica las asignaciones a quitar.' })
+  @ArrayMinSize(1, { message: 'Selecciona al menos un empleado.' })
+  @ArrayMaxSize(500, { message: 'No se pueden quitar más de 500 a la vez.' })
+  @ArrayUnique({ message: 'Hay asignaciones repetidas.' })
+  @IsUUID('4', { each: true, message: 'Asignación inválida.' })
+  ids: string[];
 }

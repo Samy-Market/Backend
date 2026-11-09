@@ -1,9 +1,9 @@
 import { TransactionContext } from '../../../../shared/application/ports/unit-of-work';
 import { Shift } from '../../../shifts/domain/shift';
+import { ScheduleUsage } from '../../domain/schedule-plan';
 
 export interface WeekDayInput {
   weekday: number;
-  /** null = descanso */
   shiftId: string | null;
 }
 
@@ -23,9 +23,7 @@ export interface ScheduleData {
   active: boolean;
 }
 
-/** Plantillas semanales. */
 export abstract class ScheduleRepository {
-  /** Todas, con cuántos empleados las usan en `today`. */
   abstract list(today: string): Promise<(ScheduleDetail & { currentEmployees: number })[]>;
   abstract findById(id: string): Promise<ScheduleDetail | null>;
   abstract create(data: ScheduleData, days: WeekDayInput[], tx?: TransactionContext): Promise<ScheduleDetail>;
@@ -35,4 +33,6 @@ export abstract class ScheduleRepository {
     days: WeekDayInput[] | undefined,
     tx?: TransactionContext,
   ): Promise<ScheduleDetail>;
+  abstract usage(id: string, today: string): Promise<ScheduleUsage>;
+  abstract delete(id: string, tx?: TransactionContext): Promise<void>;
 }

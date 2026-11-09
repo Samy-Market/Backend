@@ -4,7 +4,7 @@ import { Clock } from '../../../shared/application/ports/clock';
 import { UnitOfWork } from '../../../shared/application/ports/unit-of-work';
 import { BusinessRuleError, NotFoundError } from '../../../shared/domain/errors';
 import { ShiftRepository } from '../../shifts/application/ports/shift.repository';
-import { assertHasWorkDay, assertSevenDays } from '../domain/schedule-plan';
+import { assertHasWorkDay, assertSevenDays, scheduleDeletionBlocker } from '../domain/schedule-plan';
 import { ScheduleData, ScheduleDetail, ScheduleRepository, WeekDayInput } from './ports/schedule.repository';
 
 export interface ScheduleInput {
@@ -14,7 +14,6 @@ export interface ScheduleInput {
   days: WeekDayInput[];
 }
 
-/** Casos de uso de las plantillas semanales. */
 @Injectable()
 export class SchedulesService {
   constructor(
@@ -58,6 +57,17 @@ export class SchedulesService {
       await this.audit.record({ userId: actorId, action: 'UPDATE', entity: 'Schedule', entityId: id, before, after: s }, tx);
       return s;
     });
+  }
+
+  async remove(id: string, actorId: string) {
+    const before = await this.get(id);
+    const blocker = scheduleDeletionBlocker(await this.schedules.usage(id, this.clock.today()));
+    if (blocker) throw new BusinessRuleError(blocker);
+    await this.uow.run(async (tx) => {
+      await this.schedules.delete(id, tx);
+      await this.audit.record({ userId: actorId, action: 'DELETE', entity: 'Schedule', entityId: id, before }, tx);
+    });
+    return { deleted: true };
   }
 
   private async validateWeek(days: WeekDayInput[]) {

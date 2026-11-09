@@ -10,10 +10,6 @@ const STATUS_BY_ERROR: [new (...a: never[]) => DomainError, HttpStatus][] = [
   [UnauthorizedError, HttpStatus.UNAUTHORIZED],
 ];
 
-/**
- * Adaptador de errores a HTTP con un formato uniforme:
- * { statusCode, error, message, details?, timestamp, path }
- */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('Errores');

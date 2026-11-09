@@ -36,14 +36,12 @@ export class ReportsController {
   }
 }
 
-/** "2026-11" si el rango es un mes completo; si no, "2026-11-01_a_2026-11-15". */
 function periodSlug(from: string, to: string) {
   const f = DateTime.fromISO(from);
   const t = DateTime.fromISO(to);
   return f.day === 1 && t.hasSame(f, 'month') && t.day === f.daysInMonth ? from.slice(0, 7) : `${from}_a_${to}`;
 }
 
-/** "José Pérez" → "jose-perez" (para el nombre del archivo). */
 const slug = (s: string) =>
   s
     .normalize('NFD')

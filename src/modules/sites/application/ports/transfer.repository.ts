@@ -16,7 +16,6 @@ export interface TransferDraft extends Omit<TransferRule, 'id'> {
 }
 
 export abstract class TransferRepository {
-  /** Traslados que tocan el rango, agrupados por empleado. */
   abstract rulesFor(employeeIds: string[], fromKey: string, toKey: string): Promise<Map<string, TransferRule[]>>;
   abstract list(filter: { endingFrom?: string; siteId?: string }): Promise<TransferDetail[]>;
   abstract findById(id: string): Promise<(TransferRule & { employeeId: string; siteName: string }) | null>;
@@ -27,6 +26,5 @@ export abstract class TransferRepository {
   abstract create(draft: TransferDraft, tx?: TransactionContext): Promise<void>;
   abstract updateEnd(id: string, endDate: string, tx?: TransactionContext): Promise<void>;
   abstract delete(id: string, tx?: TransactionContext): Promise<void>;
-  /** ¿El empleado marcó en la sede de destino durante el traslado? */
   abstract hasMarksDuring(transferId: string): Promise<boolean>;
 }

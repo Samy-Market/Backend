@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { TransactionContext, UnitOfWork } from '../../application/ports/unit-of-work';
 import { PrismaService } from './prisma.service';
 
-/** Transacción de Prisma; con `lockKey` toma un bloqueo de PostgreSQL para serializar operaciones concurrentes. */
 @Injectable()
 export class PrismaUnitOfWork extends UnitOfWork {
   constructor(private prisma: PrismaService) {

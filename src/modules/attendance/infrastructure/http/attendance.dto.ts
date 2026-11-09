@@ -1,11 +1,6 @@
 import { IsIn, IsOptional, Matches } from 'class-validator';
 
 export class MarkAttendanceDto {
-  /**
-   * Opcional: el tipo que el cliente cree estar marcando (lo que muestra el botón).
-   * El servidor decide el tipo real; si no coincide se rechaza para evitar duplicados
-   * (doble toque, dos pestañas abiertas, etc.).
-   */
   @IsOptional()
   @IsIn(['IN', 'OUT'], { message: 'El tipo debe ser IN o OUT.' })
   expectedType?: 'IN' | 'OUT';

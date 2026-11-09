@@ -5,7 +5,6 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { AuthUser } from '../../../../shared/domain/auth-user';
 import { AuthService } from '../../application/auth.service';
 
-/** Lee el token "Bearer" de cada petición y lo revalida contra la base de datos. */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(

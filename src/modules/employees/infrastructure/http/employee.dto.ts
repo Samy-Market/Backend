@@ -1,7 +1,7 @@
 import { PartialType } from '@nestjs/mapped-types';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
-import { lowerEmail, trimString } from '../../../../shared/http/validation';
+import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { lowerEmail, trimString, IsNewPassword, IsAppEmail, IsCedula } from '../../../../shared/http/validation';
 
 export class CreateEmployeeDto {
   @Transform(trimString)
@@ -11,11 +11,11 @@ export class CreateEmployeeDto {
   fullName: string;
 
   @Transform(lowerEmail)
-  @IsEmail({}, { message: 'Ingresa un correo válido.' })
+  @IsAppEmail()
   email: string;
 
   @Transform(trimString)
-  @Matches(/^\d{10}(\d{3})?$/, { message: 'La cédula debe tener 10 dígitos (o 13 si es RUC).' })
+  @IsCedula()
   documentId: string;
 
   @Transform(trimString)
@@ -24,7 +24,6 @@ export class CreateEmployeeDto {
   @MaxLength(80, { message: 'El cargo no puede superar 80 caracteres.' })
   position: string;
 
-  /** Sede base del empleado (obligatoria). */
   @IsUUID('4', { message: 'Selecciona la sede del empleado.' })
   siteId: string;
 
@@ -32,8 +31,7 @@ export class CreateEmployeeDto {
   @IsBoolean({ message: 'El estado activo debe ser verdadero o falso.' })
   active?: boolean;
 
-  @IsString()
-  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres.' })
+  @IsNewPassword()
   password: string;
 }
 

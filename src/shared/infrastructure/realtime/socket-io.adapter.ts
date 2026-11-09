@@ -2,7 +2,6 @@ import { INestApplicationContext } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { Server, ServerOptions } from 'socket.io';
 
-/** Adaptador que aplica la misma lista de orígenes CORS que la API REST. */
 export class CorsIoAdapter extends IoAdapter {
   constructor(
     app: INestApplicationContext,

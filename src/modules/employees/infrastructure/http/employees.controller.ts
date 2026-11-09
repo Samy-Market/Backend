@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { AuthUser } from '../../../../shared/domain/auth-user';
 import { Role } from '../../../../shared/domain/roles';
 import { CurrentUser, Roles } from '../../../../shared/http/decorators';
@@ -12,7 +12,6 @@ export class EmployeesController {
   @Roles(Role.ADMIN, Role.SUPERVISOR)
   @Get()
   list(@Query() q: ListEmployeesQuery) {
-    // Por defecto solo activos; "all" trae todos.
     const active = q.active === 'all' ? undefined : q.active !== 'false';
     return this.employees.list({ q: q.q, siteId: q.siteId, active });
   }
@@ -33,5 +32,11 @@ export class EmployeesController {
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateEmployeeDto, @CurrentUser() user: AuthUser) {
     return this.employees.update(id, dto, user.sub);
+  }
+
+  @Roles(Role.ADMIN)
+  @Delete(':id')
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.employees.remove(id, user.sub);
   }
 }

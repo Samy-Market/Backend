@@ -12,7 +12,6 @@ export class ReportQueryDto {
   @IsUUID('4', { message: 'Empleado inválido.' })
   employeeId?: string;
 
-  /** Solo días trabajados (o programados) en esta sede. */
   @IsOptional()
   @IsUUID('4', { message: 'Sede inválida.' })
   siteId?: string;

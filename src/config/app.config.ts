@@ -1,9 +1,13 @@
-/** Zona horaria del negocio: define qué es "hoy" y las horas que ve la gente. */
 export const APP_TIMEZONE = process.env.APP_TIMEZONE || 'America/Guayaquil';
-/** Horas tras las cuales un ingreso sin salida se da por jornada abandonada. */
 export const MAX_SESSION_HOURS = Number(process.env.MAX_SESSION_HOURS || 16);
 
-/** Orígenes permitidos (frontend) para la API y el canal en vivo. */
+export function sessionIdleMinutes(role: string): number {
+  const staff = role === 'ADMIN' || role === 'SUPERVISOR';
+  const raw = staff ? process.env.SESSION_IDLE_MINUTES_STAFF : process.env.SESSION_IDLE_MINUTES_EMPLOYEE;
+  const value = Number(raw ?? (staff ? 30 : 10));
+  return Number.isFinite(value) && value >= 0 ? value : staff ? 30 : 10;
+}
+
 export function corsOrigins(): string[] {
   return (process.env.CORS_ORIGINS || 'http://localhost:5173')
     .split(',')

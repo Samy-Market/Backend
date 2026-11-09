@@ -7,12 +7,6 @@ import { AuthUser } from '../../domain/auth-user';
 import { isStaff } from '../../domain/roles';
 import { EVENTS, ROOMS } from './events';
 
-/**
- * Adaptador Socket.IO del puerto RealtimeNotifier. Solo emite avisos: las acciones
- * se hacen por HTTP y la base de datos es la fuente de verdad.
- */
-
-/** Datos que guardamos en cada conexión (el usuario autenticado). */
 const data = (socket: Socket) => socket.data as { user?: AuthUser };
 
 @WebSocketGateway()
@@ -26,7 +20,6 @@ export class RealtimeGateway extends RealtimeNotifier implements OnGatewayInit, 
     super();
   }
 
-  /** Autentica el handshake con el mismo token de la API (auth.token o header Authorization). */
   afterInit(server: Server) {
     server.use((socket, next) => {
       this.authenticate(socket).then(
@@ -62,7 +55,6 @@ export class RealtimeGateway extends RealtimeNotifier implements OnGatewayInit, 
 
   attendanceMarked(employeeId: string, payload: unknown) {
     this.server.to(ROOMS.admins).emit(EVENTS.attendanceMarked, payload);
-    // También a los otros dispositivos del propio empleado (p. ej. celular y PC).
     this.server.to(ROOMS.employee(employeeId)).emit(EVENTS.attendanceMarked, payload);
   }
 

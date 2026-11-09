@@ -1,8 +1,3 @@
-/**
- * Reglas puras de los horarios rotativos.
- * - Un Schedule es una plantilla semanal: para cada día (1 = lunes … 7 = domingo) un turno o descanso.
- * - Una asignación aplica una plantilla a un empleado entre dos fechas locales (inclusivas).
- */
 import { DayRange, addDays, eachDay, findCovering, weekdayOf } from '../../../shared/domain/calendar';
 import { BusinessRuleError } from '../../../shared/domain/errors';
 import { Shift } from '../../shifts/domain/shift';
@@ -10,7 +5,6 @@ import { Shift } from '../../shifts/domain/shift';
 export interface ScheduleRule {
   id: string;
   name: string;
-  /** weekday (1–7) → turno, o null si es descanso. Días ausentes = descanso. */
   days: { weekday: number; shift: Shift | null }[];
 }
 
@@ -24,7 +18,6 @@ export type DayPlan =
   | { kind: 'REST'; date: string; scheduleId: string; scheduleName: string; assignmentId: string }
   | { kind: 'UNASSIGNED'; date: string };
 
-/** Forma compacta del plan de un día para la API. */
 export interface DayPlanView {
   date: string;
   kind: DayPlan['kind'];
@@ -34,7 +27,6 @@ export interface DayPlanView {
 
 export type AssignmentStatus = 'PAST' | 'CURRENT' | 'UPCOMING';
 
-/** Qué le toca a un empleado un día concreto: trabajar (con qué turno), descansar o nada asignado. */
 export function planForDay(assignments: AssignmentRule[], dayKey: string): DayPlan {
   const a = findCovering(assignments, dayKey);
   if (!a) return { kind: 'UNASSIGNED', date: dayKey };
@@ -56,11 +48,6 @@ export function toPlanView(p: DayPlan): DayPlanView {
   };
 }
 
-/**
- * Al asignar un horario nuevo desde `newStart`, la asignación previa que lo cubre se
- * recorta para terminar el día anterior (rotación). Devuelve la nueva fecha de fin, o
- * null si no corresponde recortar (ya terminó antes, o empieza después: eso es un choque).
- */
 export function trimmedEndFor(previous: DayRange, newStart: string): string | null {
   if (previous.startDate >= newStart) return null;
   if (previous.endDate !== null && previous.endDate < newStart) return null;
@@ -74,14 +61,36 @@ export function assignmentStatus(range: DayRange, today: string): AssignmentStat
 
 type WeekDay = { weekday: number; shiftId: string | null };
 
-/** La plantilla debe definir los 7 días de la semana, cada uno una sola vez. */
 export function assertSevenDays(days: WeekDay[]) {
   if (new Set(days.map((d) => d.weekday)).size !== 7) {
     throw new BusinessRuleError('Define cada día de la semana una sola vez (lunes a domingo).');
   }
 }
 
-/** Una plantilla sin ningún día de trabajo no tiene sentido. */
 export function assertHasWorkDay(days: WeekDay[]) {
   if (!days.some((d) => d.shiftId)) throw new BusinessRuleError('El horario debe tener al menos un día de trabajo.');
+}
+
+export interface ScheduleUsage {
+  current: number;
+  upcoming: number;
+  past: number;
+}
+
+export function scheduleDeletionBlocker(u: ScheduleUsage): string | null {
+  const active = u.current + u.upcoming;
+  if (active) {
+    return `Este horario está asignado a ${active} ${active === 1 ? 'empleado' : 'empleados'} (hoy o más adelante). Quítalos primero con "Ver asignados".`;
+  }
+  if (u.past) return 'Este horario ya se usó y forma parte del historial de asistencia. En lugar de eliminarlo, desactívalo.';
+  return null;
+}
+
+export type UnassignAction = { kind: 'delete' } | { kind: 'end'; endDate: string } | { kind: 'none'; reason: string };
+
+export function unassignAction(a: DayRange, today: string): UnassignAction {
+  if (a.endDate && a.endDate < today) return { kind: 'none', reason: 'Esta asignación ya terminó.' };
+  if (a.startDate >= today) return { kind: 'delete' };
+  if (a.endDate === today) return { kind: 'none', reason: 'Esta asignación ya termina hoy.' };
+  return { kind: 'end', endDate: today };
 }

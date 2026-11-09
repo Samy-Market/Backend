@@ -3,7 +3,7 @@ import { AuditLog } from '../../../shared/application/ports/audit-log';
 import { Clock } from '../../../shared/application/ports/clock';
 import { UnitOfWork } from '../../../shared/application/ports/unit-of-work';
 import { BusinessRuleError, NotFoundError } from '../../../shared/domain/errors';
-import { Site } from '../domain/site-rules';
+import { Site, siteDeletionBlocker } from '../domain/site-rules';
 import { SiteData, SiteRepository } from './ports/site.repository';
 
 export interface SiteInput {
@@ -12,7 +12,6 @@ export interface SiteInput {
   active?: boolean;
 }
 
-/** Casos de uso de las sedes. */
 @Injectable()
 export class SitesService {
   constructor(
@@ -41,7 +40,6 @@ export class SitesService {
     });
   }
 
-  /** No se puede desactivar una sede que todavía es la base de empleados activos. */
   async update(id: string, input: SiteInput, actorId: string) {
     const before = await this.get(id);
     if (input.active === false && before.active) {
@@ -64,13 +62,10 @@ export class SitesService {
     });
   }
 
-  /** Solo se elimina una sede que nunca se usó; con historial, se desactiva. */
   async remove(id: string, actorId: string) {
     const before = await this.get(id);
-    const u = await this.sites.usage(id);
-    if (u.employees || u.attendances || u.transfers) {
-      throw new BusinessRuleError('Esta sede ya tiene empleados, marcaciones o traslados. En lugar de eliminarla, desactívala.');
-    }
+    const blocker = siteDeletionBlocker(await this.sites.usage(id));
+    if (blocker) throw new BusinessRuleError(blocker);
     await this.uow.run(async (tx) => {
       await this.sites.delete(id, tx);
       await this.audit.record({ userId: actorId, action: 'DELETE', entity: 'Site', entityId: id, before }, tx);

@@ -2,7 +2,6 @@ import { TransactionContext } from '../../../../shared/application/ports/unit-of
 import { Shift, ShiftData } from '../../domain/shift';
 
 export interface ShiftWithUsage extends Shift {
-  /** Horarios (plantillas) que usan este turno. */
   schedules: { id: string; name: string }[];
 }
 

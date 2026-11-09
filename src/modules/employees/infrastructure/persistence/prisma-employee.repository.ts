@@ -10,7 +10,7 @@ import {
   EmployeeWithAssignments,
   NewEmployee,
 } from '../../application/ports/employee.repository';
-import { Employee } from '../../domain/employee';
+import { Employee, EmployeeUsage } from '../../domain/employee';
 
 const EMPLOYEE_SELECT = {
   id: true,
@@ -109,6 +109,29 @@ export class PrismaEmployeeRepository extends EmployeeRepository {
           data: { fullName: c.fullName, documentId: c.documentId, position: c.position, siteId: c.siteId, active: c.active },
           select: EMPLOYEE_SELECT,
         });
+      })(),
+    );
+  }
+
+  async usage(id: string, userId: string, today: string): Promise<EmployeeUsage> {
+    const day = toDbDate(today);
+    const [activeAssignments, pastAssignments, attendances, justifications, transfers, auditLogs] = await Promise.all([
+      this.prisma.scheduleAssignment.count({ where: { employeeId: id, OR: [{ endDate: null }, { endDate: { gte: day } }] } }),
+      this.prisma.scheduleAssignment.count({ where: { employeeId: id, endDate: { lt: day } } }),
+      this.prisma.attendance.count({ where: { employeeId: id } }),
+      this.prisma.justification.count({ where: { employeeId: id } }),
+      this.prisma.siteTransfer.count({ where: { employeeId: id } }),
+      this.prisma.auditLog.count({ where: { userId } }),
+    ]);
+    return { activeAssignments, pastAssignments, attendances, justifications, transfers, auditLogs };
+  }
+
+  async delete(id: string, userId: string, tx: TransactionContext): Promise<void> {
+    const client = db(this.prisma, tx);
+    await mapPrismaErrors(
+      (async () => {
+        await client.employee.delete({ where: { id } });
+        await client.user.delete({ where: { id: userId } });
       })(),
     );
   }

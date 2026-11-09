@@ -40,7 +40,6 @@ async function main() {
   await prisma.shift.deleteMany();
   await prisma.site.deleteMany();
 
-  // Dos sedes de ejemplo.
   const centro = await prisma.site.create({
     data: { name: 'Sede Centro', address: 'Av. 9 de Octubre y Boyacá, Guayaquil', lat: -2.189412, lng: -79.889066, radiusMeters: 150 },
   });
@@ -48,7 +47,6 @@ async function main() {
     data: { name: 'Sede Norte', address: 'Av. Francisco de Orellana, Guayaquil', lat: -2.152345, lng: -79.893456, radiusMeters: 150 },
   });
 
-  // Turnos (bloques horarios) típicos de un centro comercial.
   const manana = await prisma.shift.create({
     data: { name: 'Mañana', startTime: '08:00', endTime: '18:00', toleranceMinutes: 10 },
   });
@@ -56,7 +54,6 @@ async function main() {
     data: { name: 'Tarde', startTime: '11:00', endTime: '21:00', toleranceMinutes: 10 },
   });
 
-  // Horarios rotativos: patrón semanal que se repite durante la rotación (1 = lunes … 7 = domingo).
   const pattern = (days: (typeof manana | null)[]) => days.map((shift, i) => ({ weekday: i + 1, shiftId: shift?.id ?? null }));
   const rotA = await prisma.schedule.create({
     data: {
@@ -92,7 +89,7 @@ async function main() {
     {
       email: 'ana.torres@empresa.com',
       fullName: 'Ana Torres',
-      documentId: '0912345678',
+      documentId: '0912345675',
       position: 'Cajera / perchera',
       schedule: rotA,
       site: centro,
@@ -100,7 +97,7 @@ async function main() {
     {
       email: 'luis.mendoza@empresa.com',
       fullName: 'Luis Mendoza',
-      documentId: '0923456789',
+      documentId: '0923456784',
       position: 'Bodeguero',
       schedule: rotA,
       site: centro,
@@ -108,7 +105,7 @@ async function main() {
     {
       email: 'maria.vera@empresa.com',
       fullName: 'María Vera',
-      documentId: '0934567890',
+      documentId: '0934567892',
       position: 'Asesora comercial',
       schedule: rotB,
       site: norte,
@@ -116,7 +113,7 @@ async function main() {
     {
       email: 'carlos.zambrano@empresa.com',
       fullName: 'Carlos Zambrano',
-      documentId: '0945678901',
+      documentId: '0945678902',
       position: 'Cajero',
       schedule: rotB,
       site: norte,
@@ -124,14 +121,13 @@ async function main() {
     {
       email: 'sofia.ponce@empresa.com',
       fullName: 'Sofía Ponce',
-      documentId: '0956789012',
+      documentId: '0956789010',
       position: 'Asistente administrativa',
       schedule: rotA,
       site: centro,
     },
   ];
 
-  // Rotación trimestral vigente: empezó hace 3 semanas y dura 3 meses.
   const today = DateTime.now().setZone(ZONE).startOf('day');
   const rotationStart = today.minus({ weeks: 3 });
   const rotationEnd = rotationStart.plus({ months: 3 }).minus({ days: 1 });
@@ -151,7 +147,6 @@ async function main() {
     employees.push({ employee, schedule: p.schedule, site: p.site });
   }
 
-  // Historial de ejemplo según el horario de cada día (hoy queda libre para probar).
   let rand = 42;
   const rnd = (min: number, max: number) => {
     rand = (rand * 9301 + 49297) % 233280;
@@ -163,8 +158,8 @@ async function main() {
     const day = today.minus({ days: d });
     for (const { employee, schedule, site } of employees) {
       const shift = schedule.days.find((x) => x.weekday === day.weekday)?.shift;
-      if (!shift) continue; // descanso
-      if (rnd(1, 12) === 1) continue; // ausencia ocasional
+      if (!shift) continue;
+      if (rnd(1, 12) === 1) continue;
       const [sh, sm] = shift.startTime.split(':').map(Number);
       const [eh, em] = shift.endTime.split(':').map(Number);
       const inAt = day
@@ -186,7 +181,6 @@ async function main() {
     }
   }
 
-  // Traslado de ejemplo: Luis (Sede Centro) apoya en la Sede Norte desde hoy por 3 días.
   const admin = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@empresa.com' } });
   const luis = employees.find((x) => x.employee.fullName === 'Luis Mendoza')!.employee;
   await prisma.siteTransfer.create({

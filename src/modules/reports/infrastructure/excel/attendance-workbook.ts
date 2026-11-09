@@ -10,7 +10,6 @@ const DURATION = '[h]:mm';
 
 const localTime = (d: Date | null, zone: string) => (d ? DateTime.fromJSDate(d, { zone }).toFormat('HH:mm') : '');
 const localDateTime = (d: Date, zone: string) => DateTime.fromJSDate(d, { zone }).toFormat('dd/MM/yyyy HH:mm:ss');
-/** Minutos → fracción de día, para que Excel lo muestre como horas:minutos ([h]:mm) y se pueda sumar. */
 const asExcelDuration = (minutes: number) => minutes / (24 * 60);
 const asDate = (key: string) => {
   const [y, m, d] = key.split('-').map(Number);
@@ -24,7 +23,6 @@ function planLabel(p: DayPlanView) {
   return p.kind === 'REST' ? 'Descanso' : 'Sin horario';
 }
 
-/** "Noviembre 2026" si el rango es un mes completo; si no, "01/11/2026 al 15/11/2026". */
 export function periodLabel(from: string, to: string): string {
   const f = DateTime.fromISO(from).setLocale('es');
   const t = DateTime.fromISO(to);
@@ -32,7 +30,6 @@ export function periodLabel(from: string, to: string): string {
   return `${f.toFormat('dd/MM/yyyy')} al ${t.toFormat('dd/MM/yyyy')}`;
 }
 
-/** Nombre de hoja válido en Excel (máx. 31 caracteres, sin : \ / ? * [ ]) y sin repetir. */
 export function sheetName(name: string, used: Set<string>): string {
   const base =
     name
@@ -56,17 +53,12 @@ function styleHeaderRow(row: ExcelJS.Row) {
   row.height = 32;
 }
 
-/**
- * Libro del reporte: una hoja "Resumen" con los totales de cada colaborador y una hoja por
- * colaborador con todos sus días (incluye ausencias y descansos con 0).
- */
 export async function buildAttendanceWorkbook(report: AttendanceReport): Promise<Buffer> {
   const period = periodLabel(report.from, report.to);
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Control de Asistencia';
   wb.created = report.generatedAt;
 
-  // Primero se reservan los nombres de hoja para enlazarlos desde el resumen.
   const used = new Set<string>(['resumen']);
   const sheets = report.employees.map((e) => ({ e, name: sheetName(e.employee.fullName, used) }));
 
@@ -75,8 +67,6 @@ export async function buildAttendanceWorkbook(report: AttendanceReport): Promise
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
-
-// --- Resumen ---------------------------------------------------------------
 
 function buildSummary(wb: ExcelJS.Workbook, report: AttendanceReport, period: string, sheets: { e: EmployeeReport; name: string }[]) {
   const zone = report.timezone;
@@ -118,7 +108,6 @@ function buildSummary(wb: ExcelJS.Workbook, report: AttendanceReport, period: st
   for (const { e, name } of sheets) {
     const label = e.employee.fullName + (e.employee.active ? '' : ' (inactivo)');
     const row = ws.addRow({
-      // El nombre lleva a la hoja del colaborador.
       name: { text: label, hyperlink: `#'${name}'!A1` },
       doc: e.employee.documentId,
       position: e.employee.position,
@@ -143,8 +132,6 @@ function buildSummary(wb: ExcelJS.Workbook, report: AttendanceReport, period: st
   ws.views = [{ state: 'frozen', ySplit: 1 }];
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columnCount } };
 }
-
-// --- Una hoja por colaborador ----------------------------------------------
 
 const EMPLOYEE_HEADERS = [
   'Fecha',

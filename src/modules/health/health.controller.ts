@@ -2,7 +2,6 @@ import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { Public } from '../../shared/http/decorators';
 import { PrismaService } from '../../shared/infrastructure/prisma/prisma.service';
 
-/** Endpoint para el healthcheck de Railway (o cualquier balanceador). */
 @Controller('health')
 export class HealthController {
   constructor(private prisma: PrismaService) {}

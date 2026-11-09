@@ -6,7 +6,7 @@ import { RealtimeNotifier } from '../../../shared/application/ports/realtime-not
 import { UnitOfWork } from '../../../shared/application/ports/unit-of-work';
 import { BusinessRuleError, NotFoundError } from '../../../shared/domain/errors';
 import { SiteRepository } from '../../sites/application/ports/site.repository';
-import { scheduleSummary } from '../domain/employee';
+import { employeeDeletionBlocker, scheduleSummary } from '../domain/employee';
 import { EmployeeChanges, EmployeeFilter, EmployeeRepository, EmployeeWithAssignments } from './ports/employee.repository';
 
 export interface EmployeeInput {
@@ -19,7 +19,6 @@ export interface EmployeeInput {
   password: string;
 }
 
-/** Casos de uso de la ficha de empleados. */
 @Injectable()
 export class EmployeesService {
   constructor(
@@ -72,12 +71,23 @@ export class EmployeesService {
       await this.audit.record({ userId: actorId, action, entity: 'Employee', entityId: id, before, after: employee }, tx);
       return employee;
     });
-    // Un usuario desactivado pierde también su conexión en vivo.
     if (input.active === false) this.realtime.disconnectUser(before.user.id);
     return updated;
   }
 
-  /** La sede debe existir y estar activa. */
+  async remove(id: string, actorId: string) {
+    const before = await this.get(id);
+    if (before.user.id === actorId) throw new BusinessRuleError('No puedes eliminar tu propio usuario.');
+    const blocker = employeeDeletionBlocker(await this.employees.usage(id, before.user.id, this.clock.today()));
+    if (blocker) throw new BusinessRuleError(blocker);
+    await this.uow.run(async (tx) => {
+      await this.employees.delete(id, before.user.id, tx);
+      await this.audit.record({ userId: actorId, action: 'DELETE', entity: 'Employee', entityId: id, before }, tx);
+    });
+    this.realtime.disconnectUser(before.user.id);
+    return { deleted: true };
+  }
+
   private async assertActiveSite(siteId: string) {
     const site = await this.sites.findById(siteId);
     if (!site) throw new BusinessRuleError('La sede seleccionada no existe. Crea las sedes primero en la sección Sedes.');

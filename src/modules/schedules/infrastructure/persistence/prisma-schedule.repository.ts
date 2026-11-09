@@ -4,6 +4,7 @@ import { TransactionContext } from '../../../../shared/application/ports/unit-of
 import { db, mapPrismaErrors, toDbDate } from '../../../../shared/infrastructure/prisma/prisma-db';
 import { PrismaService } from '../../../../shared/infrastructure/prisma/prisma.service';
 import { ScheduleData, ScheduleDetail, ScheduleRepository, WeekDayInput } from '../../application/ports/schedule.repository';
+import { ScheduleUsage } from '../../domain/schedule-plan';
 
 export const SHIFT_SELECT = { id: true, name: true, startTime: true, endTime: true, toleranceMinutes: true } satisfies Prisma.ShiftSelect;
 export const SCHEDULE_INCLUDE = {
@@ -53,5 +54,21 @@ export class PrismaScheduleRepository extends ScheduleRepository {
       await client.scheduleDay.createMany({ data: days.map((d) => ({ scheduleId: id, weekday: d.weekday, shiftId: d.shiftId })) });
     }
     return mapPrismaErrors(client.schedule.update({ where: { id }, data, include: SCHEDULE_INCLUDE }));
+  }
+
+  async usage(id: string, today: string): Promise<ScheduleUsage> {
+    const day = toDbDate(today);
+    const [current, upcoming, past] = await Promise.all([
+      this.prisma.scheduleAssignment.count({
+        where: { scheduleId: id, startDate: { lte: day }, OR: [{ endDate: null }, { endDate: { gte: day } }] },
+      }),
+      this.prisma.scheduleAssignment.count({ where: { scheduleId: id, startDate: { gt: day } } }),
+      this.prisma.scheduleAssignment.count({ where: { scheduleId: id, endDate: { lt: day } } }),
+    ]);
+    return { current, upcoming, past };
+  }
+
+  async delete(id: string, tx?: TransactionContext): Promise<void> {
+    await mapPrismaErrors(db(this.prisma, tx).schedule.delete({ where: { id } }));
   }
 }

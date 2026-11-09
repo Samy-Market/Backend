@@ -1,4 +1,4 @@
-import { overlappingTransfers, siteForDay, TransferRule } from './site-rules';
+import { overlappingTransfers, siteDeletionBlocker, siteForDay, TransferRule } from './site-rules';
 
 const MATRIZ = 'matriz';
 const NORTE = 'norte';
@@ -28,5 +28,14 @@ describe('Sedes: dónde trabaja el empleado cada día', () => {
   it('detecta traslados que se cruzan con uno nuevo', () => {
     expect(overlappingTransfers([emergencia, soloHoy], '2026-11-12', '2026-11-14').map((t) => t.id)).toEqual(['t1']);
     expect(overlappingTransfers([emergencia, soloHoy], '2026-11-13', '2026-11-19')).toHaveLength(0);
+  });
+});
+
+describe('Eliminar sede', () => {
+  it('no se elimina si es la sede base de empleados o tiene historial', () => {
+    expect(siteDeletionBlocker({ employees: 0, attendances: 0, transfers: 0 })).toBeNull();
+    expect(siteDeletionBlocker({ employees: 3, attendances: 0, transfers: 0 })).toContain('3 empleados');
+    expect(siteDeletionBlocker({ employees: 0, attendances: 10, transfers: 0 })).toContain('desactívala');
+    expect(siteDeletionBlocker({ employees: 0, attendances: 0, transfers: 1 })).toContain('desactívala');
   });
 });

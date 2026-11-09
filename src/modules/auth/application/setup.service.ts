@@ -8,11 +8,6 @@ import { ForbiddenError } from '../../../shared/domain/errors';
 import { AuthService } from './auth.service';
 import { AccountRepository } from './ports/account.repository';
 
-/**
- * Configuración inicial: crea el PRIMER administrador desde el frontend mientras
- * no exista ninguno. En cuanto hay un admin, queda cerrada.
- * Si se define SETUP_CODE, además exige ese código.
- */
 @Injectable()
 export class SetupService {
   constructor(

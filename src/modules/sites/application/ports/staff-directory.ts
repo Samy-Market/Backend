@@ -1,4 +1,3 @@
-/** Datos mínimos de los empleados que necesitan los traslados. */
 export interface EmployeeSite {
   id: string;
   fullName: string;

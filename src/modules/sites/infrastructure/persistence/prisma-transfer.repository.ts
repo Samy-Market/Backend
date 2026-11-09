@@ -90,7 +90,6 @@ export class PrismaTransferRepository extends TransferRepository {
 
   async hasMarksDuring(transferId: string): Promise<boolean> {
     const t = await this.prisma.siteTransfer.findUniqueOrThrow({ where: { id: transferId } });
-    // Se amplía el fin para cubrir el día completo en cualquier zona horaria.
     const count = await this.prisma.attendance.count({
       where: {
         employeeId: t.employeeId,

@@ -11,10 +11,6 @@ import { PrismaService } from './prisma/prisma.service';
 import { RealtimeGateway } from './realtime/realtime.gateway';
 import { BcryptPasswordHasher } from './security/bcrypt-password-hasher';
 
-/**
- * Composición de los adaptadores compartidos: cada puerto (clase abstracta)
- * se enlaza aquí con su implementación concreta.
- */
 @Global()
 @Module({
   providers: [

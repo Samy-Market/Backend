@@ -19,7 +19,6 @@ export interface TransferInput {
 
 const LOCK = 'site-transfers';
 
-/** Casos de uso de los traslados temporales entre sedes. */
 @Injectable()
 export class TransfersService {
   constructor(
@@ -31,7 +30,6 @@ export class TransfersService {
     private clock: Clock,
   ) {}
 
-  /** Vigentes y próximos (por defecto) o todos, opcionalmente de una sede. */
   async list(scope: 'CURRENT' | 'ALL' = 'CURRENT', siteId?: string) {
     const today = this.clock.today();
     const rows = await this.transfers.list({ endingFrom: scope === 'ALL' ? undefined : today, siteId });
@@ -111,7 +109,6 @@ export class TransfersService {
     );
   }
 
-  /** Cambia la fecha de fin (por ejemplo, para terminar antes un traslado). */
   async updateEnd(id: string, endDate: string, actorId: string) {
     const t = await this.transfers.findById(id);
     if (!t) throw new NotFoundError('Traslado no encontrado.');
@@ -133,7 +130,6 @@ export class TransfersService {
     );
   }
 
-  /** Si el empleado ya marcó durante el traslado no se borra (se pide cambiar su fecha de fin). */
   async remove(id: string, actorId: string) {
     const t = await this.transfers.findById(id);
     if (!t) throw new NotFoundError('Traslado no encontrado.');

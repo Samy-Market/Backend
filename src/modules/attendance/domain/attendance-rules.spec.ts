@@ -12,7 +12,6 @@ import {
 } from './attendance-rules';
 
 const ZONE = 'America/Guayaquil';
-/** Crea una fecha UTC a partir de una hora local de Guayaquil. */
 const local = (iso: string) => DateTime.fromISO(iso, { zone: ZONE }).toJSDate();
 const mark = (type: 'IN' | 'OUT', iso: string, extra: Partial<MarkRecord> = {}): MarkRecord => ({
   type,

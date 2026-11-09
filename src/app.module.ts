@@ -15,7 +15,6 @@ import { JwtAuthGuard } from './shared/http/guards/jwt-auth.guard';
 import { RolesGuard } from './shared/http/guards/roles.guard';
 import { InfrastructureModule } from './shared/infrastructure/infrastructure.module';
 
-/** Raíz de la aplicación: une la infraestructura compartida con los módulos de negocio. */
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env'] }),
@@ -32,7 +31,6 @@ import { InfrastructureModule } from './shared/infrastructure/infrastructure.mod
   ],
   controllers: [HealthController],
   providers: [
-    // Todas las rutas requieren sesión salvo las marcadas con @Public(); luego se validan los roles.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

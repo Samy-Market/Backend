@@ -1,12 +1,19 @@
 import { computeLateness } from '../../attendance/domain/attendance-rules';
 import { dayKeyInZone, findCovering, rangesOverlap, weekdayOf } from '../../../shared/domain/calendar';
-import { AssignmentRule, planForDay, planForRange, ScheduleRule, trimmedEndFor } from './schedule-plan';
+import {
+  AssignmentRule,
+  planForDay,
+  planForRange,
+  scheduleDeletionBlocker,
+  ScheduleRule,
+  trimmedEndFor,
+  unassignAction,
+} from './schedule-plan';
 
 const ZONE = 'America/Guayaquil';
 const manana = { id: 's1', name: 'Mañana', startTime: '08:00', endTime: '18:00', toleranceMinutes: 10 };
 const tarde = { id: 's2', name: 'Tarde', startTime: '11:00', endTime: '21:00', toleranceMinutes: 10 };
 
-/** Ejemplo del centro comercial: L mañana, M tarde, X mañana, J tarde, V mañana, S tarde, D descanso. */
 const rotacionA: ScheduleRule = {
   id: 'A',
   name: 'Rotación A',
@@ -20,7 +27,6 @@ const rotacionA: ScheduleRule = {
     { weekday: 7, shift: null },
   ],
 };
-/** La rotación siguiente invierte mañana/tarde y descansa el lunes. */
 const rotacionB: ScheduleRule = {
   id: 'B',
   name: 'Rotación B',
@@ -35,7 +41,6 @@ const rotacionB: ScheduleRule = {
   ],
 };
 
-// Noviembre 2026: lunes 2, martes 3, miércoles 4 … domingo 8.
 const trimestre1: AssignmentRule = { id: 'a1', startDate: '2026-11-01', endDate: '2027-01-31', schedule: rotacionA };
 const trimestre2: AssignmentRule = { id: 'a2', startDate: '2027-02-01', endDate: '2027-04-30', schedule: rotacionB };
 
@@ -53,7 +58,7 @@ describe('Horarios rotativos: qué turno toca cada día', () => {
   });
 
   it('el patrón se repite cada semana durante toda la rotación', () => {
-    expect(planForDay([trimestre1], '2027-01-26')).toMatchObject({ kind: 'WORK', shift: { name: 'Tarde' } }); // martes
+    expect(planForDay([trimestre1], '2027-01-26')).toMatchObject({ kind: 'WORK', shift: { name: 'Tarde' } });
   });
 
   it('el domingo es descanso en la Rotación A', () => {
@@ -62,9 +67,9 @@ describe('Horarios rotativos: qué turno toca cada día', () => {
 
   it('al cambiar de trimestre se aplica la nueva rotación', () => {
     const asignaciones = [trimestre1, trimestre2];
-    expect(planForDay(asignaciones, '2027-01-31')).toMatchObject({ kind: 'REST', scheduleName: 'Rotación A' }); // domingo
-    expect(planForDay(asignaciones, '2027-02-01')).toMatchObject({ kind: 'REST', scheduleName: 'Rotación B' }); // lunes
-    expect(planForDay(asignaciones, '2027-02-02')).toMatchObject({ kind: 'WORK', shift: { name: 'Mañana' } }); // martes
+    expect(planForDay(asignaciones, '2027-01-31')).toMatchObject({ kind: 'REST', scheduleName: 'Rotación A' });
+    expect(planForDay(asignaciones, '2027-02-01')).toMatchObject({ kind: 'REST', scheduleName: 'Rotación B' });
+    expect(planForDay(asignaciones, '2027-02-02')).toMatchObject({ kind: 'WORK', shift: { name: 'Mañana' } });
   });
 
   it('fuera de cualquier asignación el empleado no tiene horario', () => {
@@ -74,7 +79,7 @@ describe('Horarios rotativos: qué turno toca cada día', () => {
 
   it('una asignación sin fecha de fin sigue vigente indefinidamente', () => {
     const abierta: AssignmentRule = { ...trimestre1, endDate: null };
-    expect(planForDay([abierta], '2030-06-03')).toMatchObject({ kind: 'WORK' }); // lunes
+    expect(planForDay([abierta], '2030-06-03')).toMatchObject({ kind: 'WORK' });
   });
 
   it('genera el plan de una semana completa', () => {
@@ -99,7 +104,7 @@ describe('Horarios rotativos: atraso según el turno del día', () => {
   };
 
   it('a las 10:30 del lunes (turno mañana 08:00) hay atraso', () => {
-    expect(lateFor('2026-11-02T15:30:00Z')).toEqual({ isLate: true, lateMinutes: 150 }); // 10:30 local
+    expect(lateFor('2026-11-02T15:30:00Z')).toEqual({ isLate: true, lateMinutes: 150 });
   });
 
   it('a las 10:30 del martes (turno tarde 11:00) NO hay atraso', () => {
@@ -111,7 +116,7 @@ describe('Horarios rotativos: atraso según el turno del día', () => {
   });
 
   it('marcar en día de descanso no cuenta como atraso', () => {
-    expect(lateFor('2026-11-08T17:00:00Z').isLate).toBe(false); // domingo 12:00 local
+    expect(lateFor('2026-11-08T17:00:00Z').isLate).toBe(false);
   });
 });
 
@@ -136,5 +141,25 @@ describe('Horarios rotativos: periodos', () => {
     const vieja = { startDate: '2026-01-01', endDate: null, id: 'v' };
     const nueva = { startDate: '2026-11-01', endDate: null, id: 'n' };
     expect(findCovering([vieja, nueva], '2026-12-01')?.id).toBe('n');
+  });
+});
+
+describe('Eliminar horarios y quitar asignaciones', () => {
+  const none = { current: 0, upcoming: 0, past: 0 };
+
+  it('un horario solo se elimina si nadie lo usa ni lo usó', () => {
+    expect(scheduleDeletionBlocker(none)).toBeNull();
+    expect(scheduleDeletionBlocker({ ...none, current: 2 })).toContain('asignado a 2 empleados');
+    expect(scheduleDeletionBlocker({ ...none, upcoming: 1 })).toContain('asignado a 1 empleado ');
+    expect(scheduleDeletionBlocker({ ...none, past: 3 })).toContain('desactívalo');
+  });
+
+  it('quitar: lo que empieza hoy o después se elimina, lo que empezó antes termina hoy', () => {
+    const today = '2026-11-09';
+    expect(unassignAction({ startDate: '2026-11-10', endDate: null }, today)).toEqual({ kind: 'delete' });
+    expect(unassignAction({ startDate: '2026-08-01', endDate: '2027-01-31' }, today)).toEqual({ kind: 'end', endDate: today });
+    expect(unassignAction({ startDate: today, endDate: null }, today)).toEqual({ kind: 'delete' });
+    expect(unassignAction({ startDate: '2026-08-01', endDate: today }, today).kind).toBe('none');
+    expect(unassignAction({ startDate: '2026-05-01', endDate: '2026-07-31' }, today).kind).toBe('none');
   });
 });

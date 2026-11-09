@@ -4,7 +4,7 @@ import { TransactionContext } from '../../../../shared/application/ports/unit-of
 import { DayRange } from '../../../../shared/domain/calendar';
 import { db, fromDbDate, mapPrismaErrors, toDbDate } from '../../../../shared/infrastructure/prisma/prisma-db';
 import { PrismaService } from '../../../../shared/infrastructure/prisma/prisma.service';
-import { AssignmentRecord, AssignmentRepository, EndingAssignment } from '../../application/ports/assignment.repository';
+import { AssignmentRecord, AssignmentRepository, EndingAssignment, ScheduleMember } from '../../application/ports/assignment.repository';
 import { AssignmentRule } from '../../domain/schedule-plan';
 import { SCHEDULE_INCLUDE } from './prisma-schedule.repository';
 
@@ -19,7 +19,6 @@ const toRecord = (r: Row): AssignmentRecord => ({
   schedule: { id: r.schedule.id, name: r.schedule.name },
 });
 
-/** Asignaciones vigentes en algún día del rango [from, to]. */
 const overlapping = (fromKey: string, toKey: string): Prisma.ScheduleAssignmentWhereInput => ({
   startDate: { lte: toDbDate(toKey) },
   OR: [{ endDate: null }, { endDate: { gte: toDbDate(fromKey) } }],
@@ -68,6 +67,20 @@ export class PrismaAssignmentRepository extends AssignmentRepository {
   async findById(id: string): Promise<AssignmentRecord | null> {
     const r = await this.prisma.scheduleAssignment.findUnique({ where: { id }, include: WITH_SCHEDULE_NAME });
     return r ? toRecord(r) : null;
+  }
+
+  async findMany(ids: string[], tx?: TransactionContext): Promise<AssignmentRecord[]> {
+    const rows = await db(this.prisma, tx).scheduleAssignment.findMany({ where: { id: { in: ids } }, include: WITH_SCHEDULE_NAME });
+    return rows.map(toRecord);
+  }
+
+  async listBySchedule(scheduleId: string, fromKey: string): Promise<ScheduleMember[]> {
+    const rows = await this.prisma.scheduleAssignment.findMany({
+      where: { scheduleId, OR: [{ endDate: null }, { endDate: { gte: toDbDate(fromKey) } }] },
+      include: { employee: { select: { id: true, fullName: true, position: true, active: true } } },
+      orderBy: [{ employee: { fullName: 'asc' } }, { startDate: 'asc' }],
+    });
+    return rows.map((r) => ({ id: r.id, employee: r.employee, startDate: fromDbDate(r.startDate)!, endDate: fromDbDate(r.endDate) }));
   }
 
   async create(employeeId: string, scheduleId: string, range: DayRange, tx?: TransactionContext): Promise<void> {

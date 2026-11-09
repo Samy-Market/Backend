@@ -9,7 +9,6 @@ export interface AuditEntry {
   after?: unknown;
 }
 
-/** Registro de quién cambió qué (cambios hechos por administradores y supervisores). */
 export abstract class AuditLog {
   abstract record(entry: AuditEntry, tx?: TransactionContext): Promise<void>;
 }

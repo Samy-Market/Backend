@@ -9,7 +9,6 @@ import { Role } from '../../../shared/domain/roles';
 import { ALREADY_REVIEWED, assertCanReview, JustificationStatus, ReviewDecision } from '../domain/justification';
 import { JustificationDetail, JustificationRepository } from './ports/justification.repository';
 
-/** Casos de uso de las justificaciones: el empleado pide, el jefe aprueba o rechaza. */
 @Injectable()
 export class JustificationsService {
   constructor(
@@ -34,7 +33,6 @@ export class JustificationsService {
     return created;
   }
 
-  /** Los jefes ven todas; un empleado solo las suyas. */
   list(user: AuthUser, status?: JustificationStatus) {
     const employeeId = user.role === Role.EMPLOYEE ? (user.employeeId ?? '__none__') : undefined;
     return this.justifications.list({ status, employeeId });

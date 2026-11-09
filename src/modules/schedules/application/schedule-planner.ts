@@ -2,10 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { AssignmentRule, DayPlan, planForDay, planForRange } from '../domain/schedule-plan';
 import { AssignmentRepository } from './ports/assignment.repository';
 
-/**
- * Consulta qué le toca trabajar a cada empleado. La usan asistencia y reportes
- * (es la "API pública" de este módulo hacia los demás).
- */
 @Injectable()
 export class SchedulePlanner {
   constructor(private assignments: AssignmentRepository) {}

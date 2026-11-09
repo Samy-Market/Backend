@@ -15,7 +15,6 @@ export interface ReportQuery {
   siteId?: string;
 }
 
-/** Arma el reporte de asistencia de un rango de fechas. */
 @Injectable()
 export class ReportsService {
   constructor(
@@ -41,7 +40,6 @@ export class ReportsService {
 
     const employees = await this.source.employees({ employeeId: q.employeeId, ...range });
     const ids = employees.map((e) => e.id);
-    // Se amplía el fin para cerrar jornadas que cruzan el límite.
     const [marks, assignments, transfers, siteNames] = await Promise.all([
       this.source.marks(ids, range.from, toExclusive.plus({ hours: MAX_SESSION_HOURS }).toJSDate()),
       this.planner.rulesFor(ids, fromKey, toKey),
@@ -69,7 +67,6 @@ export class ReportsService {
       }),
     );
 
-    // Con filtro de sede: solo quienes trabajaron allí o tienen esa sede como base.
     const visible = q.siteId ? reports.filter((r) => r.days.length > 0 || r.employee.homeSite.id === q.siteId) : reports;
     return {
       from: fromKey,

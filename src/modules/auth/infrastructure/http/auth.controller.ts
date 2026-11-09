@@ -20,14 +20,12 @@ export class AuthController {
     return this.auth.login(dto.email, dto.password);
   }
 
-  /** ¿Falta crear el primer administrador? */
   @Public()
   @Get('setup')
   setupStatus() {
     return this.setupService.status();
   }
 
-  /** Crea el primer administrador (solo si aún no existe ninguno). */
   @Public()
   @Post('setup')
   setup(@Body() dto: SetupDto) {

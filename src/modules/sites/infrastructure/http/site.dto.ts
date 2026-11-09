@@ -66,7 +66,6 @@ export class UpdateTransferDto {
 }
 
 export class ListTransfersQuery {
-  /** CURRENT = vigentes y próximos (por defecto); ALL = incluye terminados. */
   @IsOptional()
   @IsIn(['CURRENT', 'ALL'], { message: 'El filtro debe ser CURRENT o ALL.' })
   scope?: 'CURRENT' | 'ALL';

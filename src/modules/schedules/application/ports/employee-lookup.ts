@@ -1,4 +1,3 @@
-/** Lo poco que el módulo de horarios necesita saber de los empleados. */
 export interface EmployeeBasics {
   id: string;
   fullName: string;

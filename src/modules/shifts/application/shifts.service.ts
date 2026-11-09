@@ -5,7 +5,6 @@ import { BusinessRuleError, NotFoundError } from '../../../shared/domain/errors'
 import { Shift, ShiftData } from '../domain/shift';
 import { ShiftRepository } from './ports/shift.repository';
 
-/** Casos de uso de los turnos (bloques horarios). */
 @Injectable()
 export class ShiftsService {
   constructor(
@@ -41,7 +40,6 @@ export class ShiftsService {
     });
   }
 
-  /** Solo se elimina un turno que ningún horario usa. */
   async remove(id: string, actorId: string) {
     const before = await this.get(id);
     if (await this.shifts.isUsedBySchedules(id)) {

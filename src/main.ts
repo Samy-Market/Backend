@@ -8,7 +8,6 @@ import { CorsIoAdapter } from './shared/infrastructure/realtime/socket-io.adapte
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  // Content-Disposition expuesto para que el navegador lea el nombre del Excel.
   app.enableCors({ origin: corsOrigins(), credentials: true, exposedHeaders: ['Content-Disposition'] });
   app.useWebSocketAdapter(new CorsIoAdapter(app, corsOrigins()));
   app.useGlobalPipes(validationPipe());

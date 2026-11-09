@@ -1,7 +1,3 @@
-/**
- * Cálculo puro del reporte de asistencia de un empleado en un rango:
- * días trabajados, ausencias, atrasos y horas, con la sede de cada día.
- */
 import { DateTime } from 'luxon';
 import { DayPlanView, AssignmentRule, planForRange, toPlanView } from '../../schedules/domain/schedule-plan';
 import { dayKeyInZone } from '../../../shared/domain/calendar';
@@ -14,22 +10,16 @@ type SiteRef = { id: string; name: string };
 
 export interface ReportDay {
   date: string;
-  /** Ingreso que cuenta (la hora de entrada del turno si llegó antes). */
   firstIn: Date | null;
-  /** Minutos que llegó antes de su hora de entrada (no suman horas). */
   preEntryMinutes: number;
   lastOut: Date | null;
   workedMinutes: number;
-  /** Horas suplementarias: trabajo después de la hora de salida del turno, o todo lo trabajado en un día de descanso. */
   overtimeMinutes: number;
   isLate: boolean;
   lateMinutes: number;
   openSession: boolean;
-  /** Turno que le tocaba ese día según su horario (o descanso / sin horario). */
   plan: DayPlanView;
-  /** Día de trabajo ya pasado sin ninguna marcación. */
   absent: boolean;
-  /** Sede donde trabajó (la de su primera marcación) o, si no marcó, donde le tocaba. */
   site: SiteRef;
   marks: { id: string; type: 'IN' | 'OUT'; timestamp: Date; isLate: boolean; lateMinutes: number; preEntryMinutes: number }[];
 }
@@ -40,12 +30,10 @@ export interface ReportTotals {
   daysWorked: number;
   lateDays: number;
   lateMinutes: number;
-  /** Días que llegó antes de su hora de entrada. */
   preEntryDays: number;
   preEntryMinutes: number;
   openSessions: number;
   marks: number;
-  /** Días que tenía turno dentro del rango. */
   scheduledDays: number;
   absences: number;
 }
@@ -70,9 +58,7 @@ export interface EmployeeReport {
     homeSite: SiteRef;
   };
   totals: ReportTotals;
-  /** Días con marcaciones y ausencias (los días de descanso sin marcas no se listan). */
   days: ReportDay[];
-  /** Todos los días del rango hasta hoy con lo que le tocaba (para el detalle mensual, incluye descansos). */
   calendar: DayPlanView[];
 }
 
@@ -82,7 +68,6 @@ export interface AttendanceReport {
   timezone: string;
   generatedAt: Date;
   totals: ReportTotals & { employees: number };
-  /** Sede filtrada (null = todas). */
   site: SiteRef | null;
   employees: EmployeeReport[];
 }
@@ -91,19 +76,16 @@ export type ReportMark = Required<MarkRecord> & { siteId: string | null };
 
 export interface EmployeeReportInput {
   employee: ReportEmployee;
-  /** Marcas desde el inicio del rango (incluye la salida de jornadas que cruzan el final). */
   records: ReportMark[];
   assignments: AssignmentRule[];
   transfers: TransferRule[];
   siteNames: Map<string, string>;
   fromKey: string;
   toKey: string;
-  /** Límites exactos [from, to) para las marcas listadas. */
   from: Date;
   to: Date;
   today: string;
   now: Date;
-  /** Filtro de sede (opcional). */
   siteId?: string;
   zone: string;
   maxSessionHours: number;
@@ -115,7 +97,6 @@ export function employeeReport(i: EmployeeReportInput): EmployeeReport {
   const byDay = new Map(summaries.map((d) => [d.date, d]));
   const plans = planForRange(i.assignments, i.fromKey, i.toKey);
 
-  // Sede de cada día: la de la primera marcación; si no marcó, la que le tocaba (base o traslado).
   const markedSite = new Map<string, string>();
   for (const r of i.records) {
     const k = dayKeyInZone(r.timestamp, i.zone);
@@ -125,7 +106,6 @@ export function employeeReport(i: EmployeeReportInput): EmployeeReport {
   const daySite = (date: string) => markedSite.get(date) ?? plannedSite(date);
   const inSite = (date: string) => !i.siteId || daySite(date) === i.siteId;
 
-  // Días con marcaciones + días de trabajo ya pasados sin marcaciones (ausencias).
   const days = plans
     .filter((p) => byDay.has(p.date) || (p.kind === 'WORK' && p.date < i.today))
     .filter((p) => inSite(p.date))
@@ -162,10 +142,6 @@ export function employeeReport(i: EmployeeReportInput): EmployeeReport {
   };
 }
 
-/**
- * Horas suplementarias de un día: minutos trabajados después de la hora de salida del turno
- * (los turnos nocturnos terminan al día siguiente). En un día de descanso, todo lo trabajado.
- */
 export function overtimeOf(
   day: Pick<ReportDay, 'date' | 'lastOut' | 'workedMinutes'>,
   plan: Pick<DayPlanView, 'kind' | 'shift'>,
@@ -181,7 +157,6 @@ export function overtimeOf(
   return Math.min(day.workedMinutes, Math.max(0, after));
 }
 
-/** Suma los totales de varios empleados. */
 export function sumTotals(reports: EmployeeReport[]): ReportTotals & { employees: number } {
   const all = reports.map((r) => r.totals);
   const sum = (k: keyof ReportTotals) => all.reduce((a, t) => a + t[k], 0);

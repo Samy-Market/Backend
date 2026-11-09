@@ -1,10 +1,10 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { AuthUser } from '../../../../shared/domain/auth-user';
 import { Role } from '../../../../shared/domain/roles';
 import { CurrentUser, Roles } from '../../../../shared/http/decorators';
 import { AssignmentsService } from '../../application/assignments.service';
 import { SchedulesService } from '../../application/schedules.service';
-import { AssignScheduleDto, CreateScheduleDto, UpdateAssignmentDto, UpdateScheduleDto } from './schedule.dto';
+import { AssignScheduleDto, CreateScheduleDto, UnassignDto, UpdateAssignmentDto, UpdateScheduleDto } from './schedule.dto';
 
 @Controller()
 export class SchedulesController {
@@ -59,6 +59,25 @@ export class SchedulesController {
   @Patch('schedule-assignments/:id')
   updateAssignment(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAssignmentDto, @CurrentUser() user: AuthUser) {
     return this.assignments.updateEnd(id, dto.endDate, user.sub);
+  }
+
+  @Roles(Role.ADMIN)
+  @Delete('schedules/:id')
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.schedules.remove(id, user.sub);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPERVISOR)
+  @Get('schedules/:id/assignments')
+  members(@Param('id', ParseUUIDPipe) id: string) {
+    return this.assignments.members(id);
+  }
+
+  @Roles(Role.ADMIN)
+  @Post('schedule-assignments/unassign')
+  @HttpCode(200)
+  unassign(@Body() dto: UnassignDto, @CurrentUser() user: AuthUser) {
+    return this.assignments.unassign(dto.ids, user.sub);
   }
 
   @Roles(Role.ADMIN)

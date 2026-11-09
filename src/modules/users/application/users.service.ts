@@ -7,7 +7,6 @@ import { BusinessRuleError, NotFoundError } from '../../../shared/domain/errors'
 import { assertSelfChangeAllowed, losesAdmin, mustReconnect, StaffChanges, StaffRole } from '../domain/staff-user';
 import { StaffUserRepository } from './ports/staff-user.repository';
 
-/** Casos de uso de los usuarios del personal. */
 @Injectable()
 export class UsersService {
   constructor(

@@ -3,7 +3,6 @@ import { DaySite, DaySiteView, siteForDay, toDaySiteView, TransferRule } from '.
 import { SiteRepository } from './ports/site.repository';
 import { TransferRepository } from './ports/transfer.repository';
 
-/** Dónde trabaja cada empleado cada día. Es la API pública del módulo para asistencia y reportes. */
 @Injectable()
 export class SiteLocator {
   constructor(

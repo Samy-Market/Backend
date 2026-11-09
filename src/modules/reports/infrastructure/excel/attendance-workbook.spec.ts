@@ -81,7 +81,6 @@ const report: AttendanceReport = {
   ],
 };
 
-/** Las duraciones se guardan como fracción de día con formato [h]:mm; exceljs las relee como fecha base 1899-12-30. */
 const asHHmm = (v: ExcelJS.CellValue) => {
   const raw = v && typeof v === 'object' && 'result' in v ? v.result : v;
   if (typeof raw === 'number') {
@@ -118,14 +117,12 @@ describe('Exportación a Excel', () => {
     const col = (name: string) => (ws.getRow(headerRow).values as string[]).indexOf(name);
     const cell = (day: number, name: string) => ws.getRow(headerRow + day).getCell(col(name));
 
-    // Día 1: descanso sin marcas
     expect(cell(1, 'Día').value).toBe('Lunes');
     expect(cell(1, 'Observación').value).toBe('Descanso');
     expect(asHHmm(cell(1, 'Horas trabajadas').value)).toBe('0:00');
 
-    // Día 2: trabajó con atraso y se quedó después de la salida
     expect(cell(2, 'Turno').value).toBe('Mañana 08:00–18:00');
-    expect(cell(2, 'Ingreso').value).toBe('08:14'); // 13:14 UTC → 08:14 Guayaquil
+    expect(cell(2, 'Ingreso').value).toBe('08:14');
     expect(cell(2, 'Salida').value).toBe('18:14');
     expect(cell(2, 'Horas trabajadas').numFmt).toBe('[h]:mm');
     expect(asHHmm(cell(2, 'Horas trabajadas').value)).toBe('10:00');
@@ -133,13 +130,11 @@ describe('Exportación a Excel', () => {
     expect(asHHmm(cell(2, 'Horas suplementarias (h:mm)').value)).toBe('0:14');
     expect(cell(2, 'Observación').value).toBe('Atraso 14 min');
 
-    // Día 3: tenía turno y no marcó → todo en 0
     expect(cell(3, 'Ingreso').value).toBe('—');
     expect(asHHmm(cell(3, 'Horas trabajadas').value)).toBe('0:00');
     expect(asHHmm(cell(3, 'Atraso (h:mm)').value)).toBe('0:00');
     expect(cell(3, 'Observación').value).toBe('No marcó');
 
-    // Totales con fórmula
     const total = ws.getRow(headerRow + 4);
     expect(total.getCell(1).value).toBe('TOTAL');
     expect(total.getCell(col('Horas trabajadas')).value).toMatchObject({ formula: 'SUM(G5:G7)' });

@@ -1,10 +1,9 @@
 import { TransactionContext } from '../../../../shared/application/ports/unit-of-work';
-import { AssignmentView, Employee } from '../../domain/employee';
+import { AssignmentView, Employee, EmployeeUsage } from '../../domain/employee';
 
 export interface EmployeeFilter {
   q?: string;
   siteId?: string;
-  /** undefined = todos */
   active?: boolean;
 }
 
@@ -31,10 +30,10 @@ export interface EmployeeChanges {
 export type EmployeeWithAssignments = Employee & { assignments: AssignmentView[] };
 
 export abstract class EmployeeRepository {
-  /** Empleados con sus asignaciones de horario que terminan en `today` o después. */
   abstract list(filter: EmployeeFilter, today: string): Promise<EmployeeWithAssignments[]>;
   abstract findById(id: string, today: string): Promise<EmployeeWithAssignments | null>;
-  /** Crea la cuenta (rol EMPLOYEE) y la ficha del empleado. */
   abstract create(data: NewEmployee, tx: TransactionContext): Promise<Employee>;
   abstract update(id: string, userId: string, changes: EmployeeChanges, tx: TransactionContext): Promise<Employee>;
+  abstract usage(id: string, userId: string, today: string): Promise<EmployeeUsage>;
+  abstract delete(id: string, userId: string, tx: TransactionContext): Promise<void>;
 }

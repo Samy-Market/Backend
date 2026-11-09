@@ -23,10 +23,8 @@ import { Presence, presenceOf, PresenceStatus, statusWindowStart } from '../doma
 import { AttendanceRoster } from './ports/attendance-roster';
 import { Mark, MarkRepository } from './ports/mark.repository';
 
-/** Un mes de historial no se pide más allá de ~2 meses de horario. */
 const MAX_SCHEDULE_DAYS = 62;
 
-/** Casos de uso de las marcaciones: marcar, estado de hoy, historial y horario propio. */
 @Injectable()
 export class AttendanceService {
   constructor(
@@ -39,7 +37,6 @@ export class AttendanceService {
     private realtime: RealtimeNotifier,
   ) {}
 
-  /** Marca ingreso/salida. El tipo y la hora los decide el servidor. */
   async mark(employeeIdOrNull: string | null, expectedType?: MarkType) {
     const employeeId = requireEmployee(employeeIdOrNull);
 
@@ -57,7 +54,6 @@ export class AttendanceService {
 
         const today = this.clock.today();
         let entry = { isLate: false, lateMinutes: 0, preEntryMinutes: 0 };
-        // Solo el primer ingreso del día puede contar como atraso o preingreso, medido contra el turno que le toca HOY.
         if (type === 'IN') {
           const dayStart = DateTime.fromJSDate(now, { zone: APP_TIMEZONE }).startOf('day').toJSDate();
           if ((await this.marks.countIns(employeeId, dayStart, now, tx)) === 0) {
@@ -67,7 +63,6 @@ export class AttendanceService {
           }
         }
 
-        // La marcación queda en la sede donde trabaja hoy (base o traslado vigente).
         const site = (await this.locator.sitesForDay([employee], today)).get(employee.id)!;
         const attendance = await this.marks.create({ employeeId, type, timestamp: now, ...entry, siteId: site.siteId }, tx);
         return { attendance, employee };
@@ -78,7 +73,6 @@ export class AttendanceService {
     const status = await this.employeeStatus(employeeId);
     const who = { id: employee.id, fullName: employee.fullName, position: employee.position };
 
-    // Aviso en vivo, ya confirmada la transacción.
     this.realtime.attendanceMarked(employeeId, {
       attendanceId: attendance.id,
       employee: who,
@@ -92,7 +86,6 @@ export class AttendanceService {
     return { attendance, employee: who, status };
   }
 
-  /** Estado actual del empleado (pantalla Marcar y dashboard). */
   async employeeStatus(employeeId: string) {
     const now = this.clock.now();
     const today = this.clock.today();
@@ -107,7 +100,6 @@ export class AttendanceService {
     return { ...this.presence(records, last, plan, now), todaySite };
   }
 
-  /** Estado de hoy de todos los empleados activos (dashboard de supervisión). */
   async today() {
     const now = this.clock.now();
     const today = this.clock.today();
@@ -143,7 +135,6 @@ export class AttendanceService {
     };
   }
 
-  /** Historial del mes (hora local) con resumen por día y ausencias. */
   async myMonth(employeeIdOrNull: string | null, month?: string) {
     const employeeId = requireEmployee(employeeIdOrNull);
     const now = this.clock.now();
@@ -158,7 +149,6 @@ export class AttendanceService {
     ]);
     const byDay = new Map(summaries.map((d) => [d.date, d]));
 
-    // Días con marcaciones + días de trabajo pasados sin ninguna marca (ausencias).
     const days = plans
       .filter((p) => byDay.has(p.date) || (p.kind === 'WORK' && p.date < today))
       .map((p) => {
@@ -177,7 +167,6 @@ export class AttendanceService {
     };
   }
 
-  /** Horario propio (por defecto, la semana actual de lunes a domingo). */
   async mySchedule(employeeIdOrNull: string | null, fromKey?: string, toKey?: string) {
     const employeeId = requireEmployee(employeeIdOrNull);
     const today = this.clock.today();
@@ -190,16 +179,10 @@ export class AttendanceService {
     return { from, to, today, days: plans.map(toPlanView) };
   }
 
-  // -------------------------------------------------------------------------
-
   private presence(records: Mark[], last: Mark | null, plan: Parameters<typeof presenceOf>[0]['plan'], now: Date): Presence {
     return presenceOf({ records, last, plan, now, zone: APP_TIMEZONE, maxSessionHours: MAX_SESSION_HOURS });
   }
 
-  /**
-   * Resumen por día en [from, to). Se amplía la lectura para capturar la salida
-   * de jornadas que cruzan el límite del rango.
-   */
   private async summarize(employeeId: string, from: Date, to: Date, now: Date): Promise<DaySummary[]> {
     const records = await this.marks.between(employeeId, from, new Date(to.getTime() + MAX_SESSION_HOURS * 3_600_000));
     const fromDay = DateTime.fromJSDate(from, { zone: APP_TIMEZONE }).toISODate()!;

@@ -1,4 +1,3 @@
-/** Nombres de salas y eventos compartidos con el frontend. */
 export const ROOMS = {
   admins: 'admins',
   employee: (employeeId: string) => `employee:${employeeId}`,

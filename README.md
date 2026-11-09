@@ -65,16 +65,18 @@ El seed también crea una sede ("Matriz Guayaquil") y marcaciones de ejemplo de 
 
 ## Variables de entorno
 
-| Variable            | Por defecto                                                    | Uso                                                                                                   |
-| ------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`      | `postgresql://asistencia:asistencia@localhost:5433/asistencia` | Conexión de Prisma                                                                                    |
-| `JWT_SECRET`        | —                                                              | **Obligatoria.** Cadena larga y aleatoria                                                             |
-| `JWT_EXPIRES_IN`    | `8h`                                                           | Duración del token                                                                                    |
-| `PORT`              | `3000`                                                         | Puerto de la API (Railway lo inyecta solo)                                                            |
-| `CORS_ORIGINS`      | `http://localhost:5173,…`                                      | Orígenes del frontend permitidos (REST y WebSocket), separados por coma                               |
-| `APP_TIMEZONE`      | `America/Guayaquil`                                            | Zona de referencia para días, atrasos y reportes                                                      |
-| `MAX_SESSION_HOURS` | `16`                                                           | Horas tras las que un ingreso sin salida se considera abandonado                                      |
-| `SETUP_CODE`        | —                                                              | Opcional. Si existe, el formulario de configuración inicial (crear el primer admin) exige este código |
+| Variable                        | Por defecto                                                    | Uso                                                                                                   |
+| ------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                  | `postgresql://asistencia:asistencia@localhost:5433/asistencia` | Conexión de Prisma                                                                                    |
+| `JWT_SECRET`                    | —                                                              | **Obligatoria.** Cadena larga y aleatoria                                                             |
+| `JWT_EXPIRES_IN`                | `8h`                                                           | Duración máxima de la sesión: al cumplirse, la app la cierra sola                                     |
+| `SESSION_IDLE_MINUTES_STAFF`    | `30`                                                           | Minutos sin actividad tras los que se cierra la sesión de administradores y supervisores (0 = nunca)  |
+| `SESSION_IDLE_MINUTES_EMPLOYEE` | `10`                                                           | Igual, para empleados                                                                                 |
+| `PORT`                          | `3000`                                                         | Puerto de la API (Railway lo inyecta solo)                                                            |
+| `CORS_ORIGINS`                  | `http://localhost:5173,…`                                      | Orígenes del frontend permitidos (REST y WebSocket), separados por coma                               |
+| `APP_TIMEZONE`                  | `America/Guayaquil`                                            | Zona de referencia para días, atrasos y reportes                                                      |
+| `MAX_SESSION_HOURS`             | `16`                                                           | Horas tras las que un ingreso sin salida se considera abandonado                                      |
+| `SETUP_CODE`                    | —                                                              | Opcional. Si existe, el formulario de configuración inicial (crear el primer admin) exige este código |
 
 ## Sedes y traslados
 

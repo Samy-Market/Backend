@@ -18,7 +18,6 @@ enum AttendanceType {
   OUT
 }
 
-/// Origen de la marcación. Extensible a QR, MOBILE, KIOSK, etc.
 enum AttendanceSource {
   WEB
 }
@@ -44,29 +43,22 @@ model User {
   transfers SiteTransfer[]  @relation("TransferAuthor")
 }
 
-/// Sede o local de la empresa (ej. "Matriz", "Sucursal Norte").
 model Site {
   id           String   @id @default(uuid())
   name         String   @unique
   address      String?
   active       Boolean  @default(true)
-  /// Punto de extensión para geocerca (aún no se valida)
   lat          Float?
   lng          Float?
   radiusMeters Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  /// Empleados cuya sede base es esta
   employees   Employee[]
-  /// Marcaciones registradas en esta sede
   attendances Attendance[]
-  /// Traslados temporales hacia esta sede
   transfers   SiteTransfer[]
 }
 
-/// Traslado temporal: el empleado trabaja en otra sede entre dos fechas locales (inclusivas).
-/// Lo registra un supervisor o administrador (emergencias u órdenes de la empresa).
 model SiteTransfer {
   id         String   @id @default(uuid())
   employeeId String
@@ -85,20 +77,16 @@ model SiteTransfer {
   @@index([siteId, startDate])
 }
 
-/// Bloque horario de un día (ej. "Mañana 08:00–18:00").
 model Shift {
   id               String @id @default(uuid())
   name             String
-  /// "HH:mm" en hora local (APP_TIMEZONE)
   startTime        String
-  /// "HH:mm" en hora local (APP_TIMEZONE)
   endTime          String
   toleranceMinutes Int    @default(0)
 
   scheduleDays ScheduleDay[]
 }
 
-/// Plantilla semanal reutilizable (ej. "Rotación A"): qué turno toca cada día de la semana.
 model Schedule {
   id          String   @id @default(uuid())
   name        String
@@ -111,7 +99,6 @@ model Schedule {
   assignments ScheduleAssignment[]
 }
 
-/// Un día de la plantilla. weekday: 1 = lunes … 7 = domingo. shiftId nulo = descanso.
 model ScheduleDay {
   id         String  @id @default(uuid())
   scheduleId String
@@ -124,7 +111,6 @@ model ScheduleDay {
   @@unique([scheduleId, weekday])
 }
 
-/// Horario asignado a un empleado durante un periodo (ej. una rotación de 3 meses).
 /// Fechas en día local (APP_TIMEZONE), ambas inclusivas; endDate nulo = sin fecha de fin.
 model ScheduleAssignment {
   id         String    @id @default(uuid())
@@ -170,7 +156,6 @@ model Attendance {
   lateMinutes     Int              @default(0)
   /// Minutos que llegó antes de su hora de entrada (copia fija al registrar el IN). No suman horas.
   preEntryMinutes Int              @default(0)
-  /// Sede donde se registró la marcación (sede base o la del traslado vigente ese día)
   siteId          String?
   createdAt       DateTime         @default(now())
 

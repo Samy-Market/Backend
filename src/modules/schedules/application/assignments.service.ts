@@ -4,7 +4,7 @@ import { Clock } from '../../../shared/application/ports/clock';
 import { UnitOfWork } from '../../../shared/application/ports/unit-of-work';
 import { addDays, DayRange, isValidDayKey, rangesOverlap } from '../../../shared/domain/calendar';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/domain/errors';
-import { assignmentStatus, AssignmentStatus, trimmedEndFor } from '../domain/schedule-plan';
+import { assignmentStatus, AssignmentStatus, trimmedEndFor, unassignAction } from '../domain/schedule-plan';
 import { AssignmentRecord, AssignmentRepository } from './ports/assignment.repository';
 import { EmployeeLookup } from './ports/employee-lookup';
 import { SchedulesService } from './schedules.service';
@@ -16,14 +16,12 @@ export interface AssignInput {
   endDate?: string | null;
 }
 
-/** Asignación tal como se expone por la API. */
 export interface AssignmentView extends AssignmentRecord {
   status: AssignmentStatus;
 }
 
 const LOCK = 'schedule-assignments';
 
-/** Casos de uso de las asignaciones de horarios (rotaciones). */
 @Injectable()
 export class AssignmentsService {
   constructor(
@@ -35,11 +33,6 @@ export class AssignmentsService {
     private clock: Clock,
   ) {}
 
-  /**
-   * Asigna un horario a varios empleados. Si un empleado tiene un horario vigente que
-   * empezó antes, ese horario termina automáticamente el día anterior (rotación).
-   * Si choca con un horario que empieza dentro del nuevo periodo, se rechaza.
-   */
   async assign(input: AssignInput, actorId: string) {
     const range: DayRange = { startDate: input.startDate, endDate: input.endDate ?? null };
     if (!isValidDayKey(range.startDate) || (range.endDate && !isValidDayKey(range.endDate))) throw new BusinessRuleError('Fecha inválida.');
@@ -100,7 +93,6 @@ export class AssignmentsService {
     return (await this.assignments.listByEmployee(employeeId)).map((a) => this.view(a, today));
   }
 
-  /** Cambia (o quita) la fecha de fin de una asignación. */
   async updateEnd(id: string, endDate: string | null, actorId: string): Promise<AssignmentView> {
     const a = await this.assignments.findById(id);
     if (!a) throw new NotFoundError('Asignación no encontrada.');
@@ -130,7 +122,6 @@ export class AssignmentsService {
     );
   }
 
-  /** Solo se eliminan asignaciones que aún no empiezan; las demás se terminan con una fecha de fin. */
   async remove(id: string, actorId: string) {
     const a = await this.assignments.findById(id);
     if (!a) throw new NotFoundError('Asignación no encontrada.');
@@ -153,7 +144,56 @@ export class AssignmentsService {
     return { deleted: true };
   }
 
-  /** Rotaciones que terminan en los próximos `days` días y aún no tienen un horario siguiente. */
+  async members(scheduleId: string) {
+    await this.schedules.get(scheduleId);
+    const today = this.clock.today();
+    return (await this.assignments.listBySchedule(scheduleId, today)).map((m) => ({ ...m, status: assignmentStatus(m, today) }));
+  }
+
+  async unassign(ids: string[], actorId: string) {
+    const today = this.clock.today();
+    return this.uow.run(
+      async (tx) => {
+        const found = await this.assignments.findMany(ids, tx);
+        if (found.length !== new Set(ids).size) throw new NotFoundError('Alguna de las asignaciones ya no existe.');
+        let deleted = 0;
+        let ended = 0;
+        const skipped: string[] = [];
+        for (const a of found) {
+          const action = unassignAction(a, today);
+          if (action.kind === 'delete') {
+            await this.assignments.delete(a.id, tx);
+            deleted++;
+          } else if (action.kind === 'end') {
+            await this.assignments.updateEnd(a.id, action.endDate, tx);
+            ended++;
+          } else {
+            skipped.push(action.reason);
+          }
+        }
+        await this.audit.record(
+          {
+            userId: actorId,
+            action: 'UNASSIGN',
+            entity: 'ScheduleAssignment',
+            entityId: found[0]?.id ?? '',
+            before: found.map((a) => ({
+              id: a.id,
+              employeeId: a.employeeId,
+              schedule: a.schedule.name,
+              startDate: a.startDate,
+              endDate: a.endDate,
+            })),
+            after: { deleted, ended, endDate: today },
+          },
+          tx,
+        );
+        return { deleted, ended, skipped: skipped.length };
+      },
+      { lockKey: LOCK },
+    );
+  }
+
   async expiring(days: number) {
     const today = this.clock.today();
     const ending = await this.assignments.endingBetween(today, addDays(today, days));
