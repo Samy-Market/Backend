@@ -72,6 +72,16 @@ El seed también crea una sede ("Matriz Guayaquil") y marcaciones de ejemplo de 
 | `JWT_EXPIRES_IN`                | `8h`                                                           | Duración máxima de la sesión: al cumplirse, la app la cierra sola                                     |
 | `SESSION_IDLE_MINUTES_STAFF`    | `30`                                                           | Minutos sin actividad tras los que se cierra la sesión de administradores y supervisores (0 = nunca)  |
 | `SESSION_IDLE_MINUTES_EMPLOYEE` | `10`                                                           | Igual, para empleados                                                                                 |
+| `LOGIN_MAX_ATTEMPTS`            | `5`                                                            | Intentos fallidos de ingreso por correo antes del bloqueo temporal                                    |
+| `LOGIN_MAX_ATTEMPTS_PER_IP`     | `20`                                                           | Igual, por IP (frena a quien prueba muchos correos)                                                   |
+| `LOGIN_WINDOW_MINUTES`          | `15`                                                           | Ventana en la que se cuentan los intentos fallidos                                                    |
+| `LOGIN_LOCK_MINUTES`            | `15`                                                           | Duración del bloqueo. Se guarda en memoria: reiniciar la API lo libera                                |
+| `TRUST_PROXY_HOPS`              | `1`                                                            | Proxies delante de la API (Railway = 1); sirve para conocer la IP real                                |
+| `BREVO_API_KEY`                 | —                                                              | Clave de API de Brevo para enviar el correo de “Olvidé mi contraseña”. Sin ella, el correo va al log  |
+| `MAIL_FROM_EMAIL`               | —                                                              | Remitente verificado en Brevo (Senders & IP › Senders)                                                |
+| `MAIL_FROM_NAME`                | `SAMY Asistencia`                                              | Nombre del remitente                                                                                  |
+| `APP_URL`                       | primer valor de `CORS_ORIGINS`                                 | URL pública del frontend; el enlace del correo apunta a `APP_URL/restablecer`                         |
+| `PASSWORD_RESET_MINUTES`        | `30`                                                           | Vigencia del enlace para restablecer la contraseña                                                    |
 | `PORT`                          | `3000`                                                         | Puerto de la API (Railway lo inyecta solo)                                                            |
 | `CORS_ORIGINS`                  | `http://localhost:5173,…`                                      | Orígenes del frontend permitidos (REST y WebSocket), separados por coma                               |
 | `APP_TIMEZONE`                  | `America/Guayaquil`                                            | Zona de referencia para días, atrasos y reportes                                                      |
@@ -189,6 +199,16 @@ Las pruebas cubren las reglas de negocio puras (capa `domain/`), que no necesita
 - `sites/domain/site-rules.spec.ts`: sede de cada día según los traslados y cruces entre traslados.
 - `employees`, `justifications`, `users`, `auth`: horario vigente/siguiente, quién puede revisar, no quedarse sin administradores, quién puede entrar.
 - `reports/infrastructure/excel/attendance-workbook.spec.ts`: estructura y valores del Excel exportado.
+- `sites/domain/geofence.spec.ts`: distancia a la sede, radio y precisión del GPS al marcar.
+- `time-off/domain/time-off.spec.ts`, `audit/domain/audit-view.spec.ts`, `auth/domain/login-throttle.spec.ts`: feriados y permisos, auditoría sin datos sensibles y límite de intentos de ingreso.
+
+### Integración continua (GitHub Actions)
+
+Cada push a `main` y cada pull request ejecuta [`.github/workflows/ci.yml`](.github/workflows/ci.yml) con un Postgres temporal:
+
+1. Formato, lint, tipos y pruebas.
+2. Aplica **todas las migraciones sobre una base vacía** y verifica que el esquema de Prisma coincida con ellas (`prisma migrate diff --exit-code`): si alguien cambia `schema.prisma` sin crear la migración, falla.
+3. Carga el seed, compila, **arranca la API** y hace un login real: detecta errores de configuración de módulos que las pruebas unitarias no ven.
 
 ## Arquitectura (hexagonal)
 

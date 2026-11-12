@@ -29,18 +29,22 @@ enum JustificationStatus {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  role         Role     @default(EMPLOYEE)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String
+  role              Role      @default(EMPLOYEE)
+  active            Boolean   @default(true)
+  /// Los tokens emitidos antes de esta fecha dejan de valer (cierra sesiones al cambiar la contraseña)
+  passwordChangedAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  employee  Employee?
-  reviews   Justification[] @relation("Reviewer")
-  auditLogs AuditLog[]
-  transfers SiteTransfer[]  @relation("TransferAuthor")
+  employee       Employee?
+  passwordResets PasswordReset[]
+  reviews        Justification[] @relation("Reviewer")
+  auditLogs      AuditLog[]
+  transfers      SiteTransfer[]  @relation("TransferAuthor")
+  leaves         Leave[]         @relation("LeaveAuthor")
 }
 
 model Site {
@@ -113,12 +117,15 @@ model ScheduleDay {
 
 /// Fechas en día local (APP_TIMEZONE), ambas inclusivas; endDate nulo = sin fecha de fin.
 model ScheduleAssignment {
-  id         String    @id @default(uuid())
-  employeeId String
-  scheduleId String
-  startDate  DateTime  @db.Date
-  endDate    DateTime? @db.Date
-  createdAt  DateTime  @default(now())
+  id              String    @id @default(uuid())
+  employeeId      String
+  scheduleId      String
+  startDate       DateTime  @db.Date
+  endDate         DateTime? @db.Date
+  /// Si se recortó al asignar otro horario: hasta cuándo iba antes (null = sin fin)
+  trimmed         Boolean   @default(false)
+  originalEndDate DateTime? @db.Date
+  createdAt       DateTime  @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   schedule Schedule @relation(fields: [scheduleId], references: [id])
@@ -142,6 +149,7 @@ model Employee {
   justifications Justification[]
   assignments    ScheduleAssignment[]
   transfers      SiteTransfer[]
+  leaves         Leave[]
 }
 
 model Attendance {
@@ -157,6 +165,11 @@ model Attendance {
   /// Minutos que llegó antes de su hora de entrada (copia fija al registrar el IN). No suman horas.
   preEntryMinutes Int              @default(0)
   siteId          String?
+  /// Ubicación enviada por el celular al marcar; distanceMeters es a la sede si tiene ubicación configurada
+  latitude        Float?
+  longitude       Float?
+  accuracyMeters  Int?
+  distanceMeters  Int?
   createdAt       DateTime         @default(now())
 
   employee       Employee        @relation(fields: [employeeId], references: [id])
@@ -170,7 +183,9 @@ model Attendance {
 
 model Justification {
   id           String              @id @default(uuid())
-  attendanceId String
+  /// Una de las dos: la marcación justificada o el día de ausencia (CHECK en la migración)
+  attendanceId String?
+  date         DateTime?           @db.Date
   employeeId   String
   reason       String
   status       JustificationStatus @default(PENDING)
@@ -179,12 +194,13 @@ model Justification {
   reviewNote   String?
   createdAt    DateTime            @default(now())
 
-  attendance Attendance @relation(fields: [attendanceId], references: [id])
-  employee   Employee   @relation(fields: [employeeId], references: [id])
-  reviewer   User?      @relation("Reviewer", fields: [reviewedBy], references: [id])
+  attendance Attendance? @relation(fields: [attendanceId], references: [id], onDelete: Restrict)
+  employee   Employee    @relation(fields: [employeeId], references: [id])
+  reviewer   User?       @relation("Reviewer", fields: [reviewedBy], references: [id])
 
   @@index([status])
   @@index([employeeId])
+  @@index([employeeId, date])
 }
 
 model AuditLog {
@@ -201,4 +217,46 @@ model AuditLog {
 
   @@index([entity, entityId])
   @@index([createdAt])
+}
+
+enum LeaveKind {
+  VACATION
+  MEDICAL
+  PERSONAL
+}
+
+model Holiday {
+  id        String   @id @default(uuid())
+  date      DateTime @unique @db.Date
+  name      String
+  createdAt DateTime @default(now())
+}
+
+model Leave {
+  id         String    @id @default(uuid())
+  employeeId String
+  kind       LeaveKind
+  startDate  DateTime  @db.Date
+  endDate    DateTime  @db.Date
+  note       String?
+  createdBy  String
+  createdAt  DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  author   User     @relation("LeaveAuthor", fields: [createdBy], references: [id])
+
+  @@index([employeeId, startDate])
+}
+
+model PasswordReset {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

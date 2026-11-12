@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { DateTime } from 'luxon';
+import { APP_TIMEZONE } from '../../../config/app.config';
 import { AuditLog } from '../../../shared/application/ports/audit-log';
 import { Clock } from '../../../shared/application/ports/clock';
 import { RealtimeNotifier } from '../../../shared/application/ports/realtime-notifier';
@@ -6,7 +8,9 @@ import { UnitOfWork } from '../../../shared/application/ports/unit-of-work';
 import { AuthUser } from '../../../shared/domain/auth-user';
 import { BusinessRuleError, ConflictError, ForbiddenError, NotFoundError } from '../../../shared/domain/errors';
 import { Role } from '../../../shared/domain/roles';
-import { ALREADY_REVIEWED, assertCanReview, JustificationStatus, ReviewDecision } from '../domain/justification';
+import { isValidDayKey } from '../../../shared/domain/calendar';
+import { SchedulePlanner } from '../../schedules/application/schedule-planner';
+import { absenceProblem, ALREADY_REVIEWED, assertCanReview, JustificationStatus, ReviewDecision } from '../domain/justification';
 import { JustificationDetail, JustificationRepository } from './ports/justification.repository';
 
 @Injectable()
@@ -17,20 +21,43 @@ export class JustificationsService {
     private audit: AuditLog,
     private clock: Clock,
     private realtime: RealtimeNotifier,
+    private planner: SchedulePlanner,
   ) {}
 
-  async create(user: AuthUser, input: { attendanceId: string; reason: string }): Promise<JustificationDetail> {
+  async create(user: AuthUser, input: { attendanceId?: string; date?: string; reason: string }): Promise<JustificationDetail> {
     if (!user.employeeId) throw new ForbiddenError('Solo los empleados pueden solicitar justificaciones.');
-    // Mismo mensaje si no existe o es de otra persona, para no filtrar información.
-    if ((await this.justifications.markOwner(input.attendanceId)) !== user.employeeId) {
-      throw new NotFoundError('Marcación no encontrada.');
-    }
-    if (await this.justifications.hasPending(input.attendanceId)) {
-      throw new ConflictError('Ya existe una solicitud pendiente para esta marcación.');
-    }
-    const created = await this.justifications.create({ ...input, employeeId: user.employeeId });
+    if (!!input.attendanceId === !!input.date) throw new BusinessRuleError('Indica la marcación o el día que quieres justificar.');
+    const created = input.date
+      ? await this.createForAbsence(user.employeeId, input.date, input.reason)
+      : await this.createForMark(user.employeeId, input.attendanceId!, input.reason);
     this.realtime.justificationCreated(created);
     return created;
+  }
+
+  private async createForAbsence(employeeId: string, date: string, reason: string) {
+    if (!isValidDayKey(date)) throw new BusinessRuleError('Fecha inválida.');
+    const start = DateTime.fromISO(date, { zone: APP_TIMEZONE }).startOf('day');
+    const [plan, marks] = await Promise.all([
+      this.planner.planForEmployee(employeeId, date),
+      this.justifications.marksBetween(employeeId, start.toJSDate(), start.plus({ days: 1 }).toJSDate()),
+    ]);
+    const problem = absenceProblem({ date, today: this.clock.today(), planKind: plan.kind, marks });
+    if (problem) throw new BusinessRuleError(problem);
+    const open = await this.justifications.openForDay(employeeId, date);
+    if (open === 'PENDING') throw new ConflictError('Ya existe una solicitud pendiente para este día.');
+    if (open === 'APPROVED') throw new ConflictError('Esta ausencia ya está justificada.');
+    return this.justifications.create({ date, employeeId, reason });
+  }
+
+  private async createForMark(employeeId: string, attendanceId: string, reason: string) {
+    // Mismo mensaje si no existe o es de otra persona, para no filtrar información.
+    if ((await this.justifications.markOwner(attendanceId)) !== employeeId) {
+      throw new NotFoundError('Marcación no encontrada.');
+    }
+    if (await this.justifications.hasPending(attendanceId)) {
+      throw new ConflictError('Ya existe una solicitud pendiente para esta marcación.');
+    }
+    return this.justifications.create({ attendanceId, employeeId, reason });
   }
 
   list(user: AuthUser, status?: JustificationStatus) {

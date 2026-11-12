@@ -7,6 +7,7 @@ export interface Account {
   role: Role;
   active: boolean;
   passwordHash: string;
+  passwordChangedAt: Date | null;
   employee: { id: string; active: boolean } | null;
 }
 

@@ -102,7 +102,10 @@ export class PrismaEmployeeRepository extends EmployeeRepository {
         const user: Prisma.UserUpdateInput = {};
         if (c.email !== undefined) user.email = c.email;
         if (c.active !== undefined) user.active = c.active;
-        if (c.passwordHash) user.passwordHash = c.passwordHash;
+        if (c.passwordHash) {
+          user.passwordHash = c.passwordHash;
+          user.passwordChangedAt = new Date();
+        }
         if (Object.keys(user).length) await client.user.update({ where: { id: userId }, data: user });
         return client.employee.update({
           where: { id },

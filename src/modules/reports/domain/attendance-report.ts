@@ -1,8 +1,9 @@
 import { DateTime } from 'luxon';
-import { DayPlanView, AssignmentRule, planForRange, toPlanView } from '../../schedules/domain/schedule-plan';
+import { DayPlanView, AssignmentRule, planForRange, scheduledSoFar, toPlanView } from '../../schedules/domain/schedule-plan';
 import { dayKeyInZone } from '../../../shared/domain/calendar';
 import { siteForDay, TransferRule } from '../../sites/domain/site-rules';
 import { DaySummary, MarkRecord, parseHHmm, summarizeByDay } from '../../attendance/domain/attendance-rules';
+import { DayOff, dayOffFor, TimeOff } from '../../time-off/domain/time-off';
 
 export const MAX_REPORT_DAYS = 366;
 
@@ -15,13 +16,26 @@ export interface ReportDay {
   lastOut: Date | null;
   workedMinutes: number;
   overtimeMinutes: number;
+  /** Falso si el atraso tiene una justificación aprobada: así no suma en los totales. */
   isLate: boolean;
   lateMinutes: number;
+  lateJustified: boolean;
   openSession: boolean;
   plan: DayPlanView;
+  /** Falso si la ausencia tiene una justificación aprobada: así no suma en los totales. */
   absent: boolean;
+  absenceJustified: boolean;
+  dayOff: DayOff | null;
   site: SiteRef;
-  marks: { id: string; type: 'IN' | 'OUT'; timestamp: Date; isLate: boolean; lateMinutes: number; preEntryMinutes: number }[];
+  marks: {
+    id: string;
+    type: 'IN' | 'OUT';
+    timestamp: Date;
+    isLate: boolean;
+    lateMinutes: number;
+    preEntryMinutes: number;
+    justified: boolean;
+  }[];
 }
 
 export interface ReportTotals {
@@ -30,12 +44,17 @@ export interface ReportTotals {
   daysWorked: number;
   lateDays: number;
   lateMinutes: number;
+  justifiedLateDays: number;
+  justifiedLateMinutes: number;
   preEntryDays: number;
   preEntryMinutes: number;
   openSessions: number;
   marks: number;
   scheduledDays: number;
   absences: number;
+  justifiedAbsences: number;
+  holidays: number;
+  leaveDays: number;
 }
 
 export interface ReportEmployee {
@@ -72,13 +91,15 @@ export interface AttendanceReport {
   employees: EmployeeReport[];
 }
 
-export type ReportMark = Required<MarkRecord> & { siteId: string | null };
+export type ReportMark = Required<MarkRecord> & { siteId: string | null; justified: boolean };
 
 export interface EmployeeReportInput {
   employee: ReportEmployee;
   records: ReportMark[];
   assignments: AssignmentRule[];
   transfers: TransferRule[];
+  justifiedAbsences?: Set<string>;
+  timeOff?: TimeOff;
   siteNames: Map<string, string>;
   fromKey: string;
   toKey: string;
@@ -95,6 +116,8 @@ export function employeeReport(i: EmployeeReportInput): EmployeeReport {
   const siteRef = (id: string): SiteRef => ({ id, name: i.siteNames.get(id) ?? '—' });
   const summaries = summarizeByDay(i.records, i.zone, i.now, i.maxSessionHours).filter((d) => d.date >= i.fromKey && d.date <= i.toKey);
   const byDay = new Map(summaries.map((d) => [d.date, d]));
+  const justified = new Set(i.records.filter((r) => r.justified).map((r) => r.id));
+  const off = (date: string) => (i.timeOff ? dayOffFor(date, i.timeOff) : null);
   const plans = planForRange(i.assignments, i.fromKey, i.toKey);
 
   const markedSite = new Map<string, string>();
@@ -115,9 +138,12 @@ export function employeeReport(i: EmployeeReportInput): EmployeeReport {
         i.from,
         i.to,
         toPlanView(p),
-        !byDay.has(p.date),
+        !byDay.has(p.date) && !i.justifiedAbsences?.has(p.date) && !off(p.date),
+        !byDay.has(p.date) && !!i.justifiedAbsences?.has(p.date) && !off(p.date),
+        off(p.date),
         siteRef(daySite(p.date)),
         i.zone,
+        justified,
       ),
     );
   const calendar = plans.filter((p) => p.date <= i.today && inSite(p.date)).map(toPlanView);
@@ -135,7 +161,13 @@ export function employeeReport(i: EmployeeReportInput): EmployeeReport {
     },
     totals: {
       ...totalsOf(days),
-      scheduledDays: plans.filter((p) => p.kind === 'WORK' && (!i.siteId || plannedSite(p.date) === i.siteId)).length,
+      scheduledDays: plans.filter(
+        (p) =>
+          p.kind === 'WORK' &&
+          scheduledSoFar(p.date, i.today, byDay.has(p.date)) &&
+          !off(p.date) &&
+          (!i.siteId || plannedSite(p.date) === i.siteId),
+      ).length,
     },
     days,
     calendar,
@@ -167,28 +199,48 @@ export function sumTotals(reports: EmployeeReport[]): ReportTotals & { employees
     daysWorked: sum('daysWorked'),
     lateDays: sum('lateDays'),
     lateMinutes: sum('lateMinutes'),
+    justifiedLateDays: sum('justifiedLateDays'),
+    justifiedLateMinutes: sum('justifiedLateMinutes'),
     preEntryDays: sum('preEntryDays'),
     preEntryMinutes: sum('preEntryMinutes'),
     openSessions: sum('openSessions'),
     marks: sum('marks'),
     scheduledDays: sum('scheduledDays'),
     absences: sum('absences'),
+    justifiedAbsences: sum('justifiedAbsences'),
+    holidays: sum('holidays'),
+    leaveDays: sum('leaveDays'),
   };
 }
 
-function toReportDay(d: DaySummary, from: Date, to: Date, plan: DayPlanView, absent: boolean, site: SiteRef, zone: string): ReportDay {
+function toReportDay(
+  d: DaySummary,
+  from: Date,
+  to: Date,
+  plan: DayPlanView,
+  absent: boolean,
+  absenceJustified: boolean,
+  dayOff: DayOff | null,
+  site: SiteRef,
+  zone: string,
+  justified: Set<string>,
+): ReportDay {
+  const lateJustified = d.isLate && d.records.some((r) => r.type === 'IN' && r.isLate && justified.has(r.id!));
   return {
     date: d.date,
     firstIn: d.firstIn,
     preEntryMinutes: d.preEntryMinutes,
     lastOut: d.lastOut,
     workedMinutes: d.workedMinutes,
-    overtimeMinutes: overtimeOf(d, plan, zone),
-    isLate: d.isLate,
+    overtimeMinutes: dayOff?.kind === 'HOLIDAY' ? d.workedMinutes : overtimeOf(d, plan, zone),
+    isLate: d.isLate && !lateJustified && !dayOff,
     lateMinutes: d.lateMinutes,
+    lateJustified,
     openSession: d.openSession,
     plan,
     absent,
+    absenceJustified,
+    dayOff,
     site,
     marks: d.records
       .filter((r) => r.timestamp >= from && r.timestamp < to)
@@ -199,6 +251,7 @@ function toReportDay(d: DaySummary, from: Date, to: Date, plan: DayPlanView, abs
         isLate: !!r.isLate,
         lateMinutes: r.lateMinutes ?? 0,
         preEntryMinutes: r.preEntryMinutes ?? 0,
+        justified: justified.has(r.id!),
       })),
   };
 }
@@ -210,11 +263,16 @@ function totalsOf(days: ReportDay[]): Omit<ReportTotals, 'scheduledDays'> {
     daysWorked: days.filter((d) => d.firstIn).length,
     lateDays: days.filter((d) => d.isLate).length,
     lateMinutes: days.reduce((a, d) => a + (d.isLate ? d.lateMinutes : 0), 0),
+    justifiedLateDays: days.filter((d) => d.lateJustified).length,
+    justifiedLateMinutes: days.reduce((a, d) => a + (d.lateJustified ? d.lateMinutes : 0), 0),
     preEntryDays: days.filter((d) => d.preEntryMinutes > 0).length,
     preEntryMinutes: days.reduce((a, d) => a + d.preEntryMinutes, 0),
     openSessions: days.filter((d) => d.openSession).length,
     marks: days.reduce((a, d) => a + d.marks.length, 0),
     absences: days.filter((d) => d.absent).length,
+    justifiedAbsences: days.filter((d) => d.absenceJustified).length,
+    holidays: days.filter((d) => d.dayOff?.kind === 'HOLIDAY').length,
+    leaveDays: days.filter((d) => d.dayOff?.kind === 'LEAVE').length,
   };
 }
 

@@ -33,6 +33,8 @@ async function main() {
   await prisma.justification.deleteMany();
   await prisma.attendance.deleteMany();
   await prisma.siteTransfer.deleteMany();
+  await prisma.leave.deleteMany();
+  await prisma.holiday.deleteMany();
   await prisma.scheduleAssignment.deleteMany();
   await prisma.employee.deleteMany();
   await prisma.user.deleteMany();

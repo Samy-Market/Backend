@@ -5,6 +5,9 @@ export interface SiteData {
   name: string;
   address: string | null;
   active: boolean;
+  lat: number | null;
+  lng: number | null;
+  radiusMeters: number | null;
 }
 
 export interface SiteUsage {

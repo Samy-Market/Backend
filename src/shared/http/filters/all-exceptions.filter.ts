@@ -1,6 +1,14 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { BusinessRuleError, ConflictError, DomainError, ForbiddenError, NotFoundError, UnauthorizedError } from '../../domain/errors';
+import {
+  BusinessRuleError,
+  ConflictError,
+  DomainError,
+  ForbiddenError,
+  NotFoundError,
+  TooManyRequestsError,
+  UnauthorizedError,
+} from '../../domain/errors';
 
 const STATUS_BY_ERROR: [new (...a: never[]) => DomainError, HttpStatus][] = [
   [NotFoundError, HttpStatus.NOT_FOUND],
@@ -8,6 +16,7 @@ const STATUS_BY_ERROR: [new (...a: never[]) => DomainError, HttpStatus][] = [
   [ConflictError, HttpStatus.CONFLICT],
   [ForbiddenError, HttpStatus.FORBIDDEN],
   [UnauthorizedError, HttpStatus.UNAUTHORIZED],
+  [TooManyRequestsError, HttpStatus.TOO_MANY_REQUESTS],
 ];
 
 @Catch()

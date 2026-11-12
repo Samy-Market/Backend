@@ -3,6 +3,7 @@ import { AuditLog } from '../../../shared/application/ports/audit-log';
 import { Clock } from '../../../shared/application/ports/clock';
 import { UnitOfWork } from '../../../shared/application/ports/unit-of-work';
 import { BusinessRuleError, NotFoundError } from '../../../shared/domain/errors';
+import { coordinatesProblem, DEFAULT_RADIUS_METERS } from '../domain/geofence';
 import { Site, siteDeletionBlocker } from '../domain/site-rules';
 import { SiteData, SiteRepository } from './ports/site.repository';
 
@@ -10,6 +11,20 @@ export interface SiteInput {
   name?: string;
   address?: string | null;
   active?: boolean;
+  lat?: number | null;
+  lng?: number | null;
+  radiusMeters?: number | null;
+}
+
+function location(input: SiteInput, current: Pick<Site, 'lat' | 'lng' | 'radiusMeters'>) {
+  const lat = input.lat === undefined ? current.lat : input.lat;
+  const lng = input.lng === undefined ? current.lng : input.lng;
+  let radiusMeters = input.radiusMeters === undefined ? current.radiusMeters : input.radiusMeters;
+  if (lat === null) radiusMeters = null;
+  else if (radiusMeters === null) radiusMeters = DEFAULT_RADIUS_METERS;
+  const problem = coordinatesProblem(lat, lng, radiusMeters);
+  if (problem) throw new BusinessRuleError(problem);
+  return { lat, lng, radiusMeters };
 }
 
 @Injectable()
@@ -32,7 +47,12 @@ export class SitesService {
   }
 
   create(input: SiteInput & { name: string }, actorId: string) {
-    const data: SiteData = { name: input.name, address: input.address || null, active: input.active ?? true };
+    const data: SiteData = {
+      name: input.name,
+      address: input.address || null,
+      active: input.active ?? true,
+      ...location(input, { lat: null, lng: null, radiusMeters: null }),
+    };
     return this.uow.run(async (tx) => {
       const site = await this.sites.create(data, tx);
       await this.audit.record({ userId: actorId, action: 'CREATE', entity: 'Site', entityId: site.id, after: site }, tx);
@@ -54,6 +74,7 @@ export class SitesService {
       name: input.name,
       address: input.address === undefined ? undefined : input.address || null,
       active: input.active,
+      ...location(input, before),
     };
     return this.uow.run(async (tx) => {
       const site = await this.sites.update(id, data, tx);

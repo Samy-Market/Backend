@@ -11,3 +11,15 @@ export function assertCanReview(justification: { status: JustificationStatus; em
     throw new ForbiddenError('No puedes revisar tu propia justificación.');
   }
 }
+
+export function absenceProblem(day: {
+  date: string;
+  today: string;
+  planKind: 'WORK' | 'REST' | 'UNASSIGNED';
+  marks: number;
+}): string | null {
+  if (day.date >= day.today) return 'Solo se pueden justificar ausencias de días que ya pasaron.';
+  if (day.planKind !== 'WORK') return 'Ese día no tenías turno de trabajo.';
+  if (day.marks > 0) return 'Ese día sí tiene marcaciones: justifica la marcación.';
+  return null;
+}

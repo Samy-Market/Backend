@@ -25,6 +25,10 @@ export interface NewMark {
   lateMinutes: number;
   preEntryMinutes: number;
   siteId: string;
+  latitude: number | null;
+  longitude: number | null;
+  accuracyMeters: number | null;
+  distanceMeters: number | null;
 }
 
 export abstract class MarkRepository {
@@ -32,5 +36,10 @@ export abstract class MarkRepository {
   abstract countIns(employeeId: string, from: Date, to: Date, tx?: TransactionContext): Promise<number>;
   abstract create(mark: NewMark, tx?: TransactionContext): Promise<StoredMark>;
   abstract between(employeeId: string, from: Date, to?: Date): Promise<Mark[]>;
+  abstract approvedJustifications(
+    employeeId: string,
+    fromKey: string,
+    toKey: string,
+  ): Promise<{ markIds: Set<string>; absenceDates: Set<string> }>;
   abstract lastByEmployee(): Promise<Map<string, Mark>>;
 }

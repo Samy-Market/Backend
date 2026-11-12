@@ -94,3 +94,42 @@ export function unassignAction(a: DayRange, today: string): UnassignAction {
   if (a.endDate === today) return { kind: 'none', reason: 'Esta asignación ya termina hoy.' };
   return { kind: 'end', endDate: today };
 }
+
+type Placed = DayRange & { id: string; schedule: { id: string; name: string }; trimmed?: boolean; originalEndDate?: string | null };
+
+export type RestorePlan =
+  | { kind: 'extend'; id: string; endDate: string | null }
+  | { kind: 'create'; scheduleId: string; startDate: string; endDate: string | null };
+
+export interface UnassignOutcome {
+  action: UnassignAction;
+  gap: { from: string; to: string | null } | null;
+  previous: { id: string; schedule: { id: string; name: string }; until: string | null } | null;
+  restore: RestorePlan | null;
+}
+
+export function unassignOutcome(a: Placed, others: Placed[], today: string): UnassignOutcome {
+  const action = unassignAction(a, today);
+  if (action.kind === 'none') return { action, gap: null, previous: null, restore: null };
+  const gap = action.kind === 'delete' ? { from: a.startDate, to: a.endDate } : { from: addDays(today, 1), to: a.endDate };
+  const prev = others.find((o) => o.id !== a.id && o.endDate === addDays(a.startDate, -1)) ?? null;
+  if (!prev) return { action, gap, previous: null, restore: null };
+  const until = earlierEnd(prev.trimmed ? (prev.originalEndDate ?? null) : gap.to, gap.to);
+  if (until !== null && until < gap.from) return { action, gap, previous: null, restore: null };
+  const previous = { id: prev.id, schedule: prev.schedule, until };
+  const restore: RestorePlan =
+    action.kind === 'delete'
+      ? { kind: 'extend', id: prev.id, endDate: until }
+      : { kind: 'create', scheduleId: prev.schedule.id, startDate: gap.from, endDate: until };
+  return { action, gap, previous, restore };
+}
+
+function earlierEnd(a: string | null, b: string | null): string | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return a < b ? a : b;
+}
+
+export function scheduledSoFar(date: string, today: string, markedThatDay: boolean): boolean {
+  return date < today || (date === today && markedThatDay);
+}

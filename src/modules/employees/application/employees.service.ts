@@ -71,7 +71,7 @@ export class EmployeesService {
       await this.audit.record({ userId: actorId, action, entity: 'Employee', entityId: id, before, after: employee }, tx);
       return employee;
     });
-    if (input.active === false) this.realtime.disconnectUser(before.user.id);
+    if (input.active === false || changes.passwordHash) this.realtime.disconnectUser(before.user.id);
     return updated;
   }
 

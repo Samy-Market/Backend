@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Attendance } from '@prisma/client';
 import { TransactionContext } from '../../../../shared/application/ports/unit-of-work';
-import { db } from '../../../../shared/infrastructure/prisma/prisma-db';
+import { db, fromDbDate, toDbDate } from '../../../../shared/infrastructure/prisma/prisma-db';
 import { PrismaService } from '../../../../shared/infrastructure/prisma/prisma.service';
 import { Mark, MarkRepository, NewMark, StoredMark } from '../../application/ports/mark.repository';
 
@@ -31,6 +31,23 @@ export class PrismaMarkRepository extends MarkRepository {
       orderBy: { timestamp: 'asc' },
       select: MARK_SELECT,
     });
+  }
+
+  async approvedJustifications(employeeId: string, fromKey: string, toKey: string) {
+    const from = toDbDate(fromKey);
+    const to = new Date(toDbDate(toKey).getTime() + 2 * 86_400_000);
+    const rows = await this.prisma.justification.findMany({
+      where: {
+        employeeId,
+        status: 'APPROVED',
+        OR: [{ date: { gte: from, lte: toDbDate(toKey) } }, { attendance: { timestamp: { gte: from, lt: to } } }],
+      },
+      select: { attendanceId: true, date: true },
+    });
+    return {
+      markIds: new Set(rows.flatMap((r) => (r.attendanceId ? [r.attendanceId] : []))),
+      absenceDates: new Set(rows.flatMap((r) => (r.date ? [fromDbDate(r.date)!] : []))),
+    };
   }
 
   async lastByEmployee(): Promise<Map<string, Mark>> {

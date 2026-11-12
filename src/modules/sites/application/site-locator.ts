@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Geofence, geofenceOf } from '../domain/geofence';
 import { DaySite, DaySiteView, siteForDay, toDaySiteView, TransferRule } from '../domain/site-rules';
 import { SiteRepository } from './ports/site.repository';
 import { TransferRepository } from './ports/transfer.repository';
@@ -25,6 +26,11 @@ export class SiteLocator {
       dayKey,
     );
     return new Map(employees.map((e) => [e.id, siteForDay(e.siteId, map.get(e.id) ?? [], dayKey)]));
+  }
+
+  async geofence(siteId: string): Promise<{ name: string; fence: Geofence | null }> {
+    const site = await this.sites.findById(siteId);
+    return { name: site?.name ?? 'tu sede', fence: site ? geofenceOf(site) : null };
   }
 
   async daySiteView(employee: { id: string; siteId: string }, dayKey: string): Promise<DaySiteView> {

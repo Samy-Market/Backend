@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SchedulesModule } from '../schedules/schedules.module';
 import { SitesModule } from '../sites/sites.module';
+import { TimeOffModule } from '../time-off/time-off.module';
 import { ReportExporter } from './application/ports/report-exporter';
 import { ReportSource } from './application/ports/report-source';
 import { ReportsService } from './application/reports.service';
@@ -9,7 +10,7 @@ import { ReportsController } from './infrastructure/http/reports.controller';
 import { PrismaReportSource } from './infrastructure/persistence/prisma-report-source';
 
 @Module({
-  imports: [SchedulesModule, SitesModule],
+  imports: [SchedulesModule, SitesModule, TimeOffModule],
   controllers: [ReportsController],
   providers: [
     ReportsService,

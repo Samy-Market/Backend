@@ -1,11 +1,16 @@
 import { JustificationStatus } from '../../domain/justification';
 import { Transform } from 'class-transformer';
-import { IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
 import { trimString } from '../../../../shared/http/validation';
 
 export class CreateJustificationDto {
+  @ValidateIf((o: CreateJustificationDto) => o.date === undefined)
   @IsUUID('4', { message: 'Marcación inválida.' })
-  attendanceId: string;
+  attendanceId?: string;
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Fecha inválida (AAAA-MM-DD).' })
+  date?: string;
 
   @Transform(trimString)
   @IsString()

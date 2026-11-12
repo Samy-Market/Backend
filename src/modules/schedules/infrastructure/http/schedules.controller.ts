@@ -74,10 +74,17 @@ export class SchedulesController {
   }
 
   @Roles(Role.ADMIN)
+  @Post('schedule-assignments/unassign/preview')
+  @HttpCode(200)
+  previewUnassign(@Body() dto: UnassignDto) {
+    return this.assignments.previewUnassign(dto.ids);
+  }
+
+  @Roles(Role.ADMIN)
   @Post('schedule-assignments/unassign')
   @HttpCode(200)
   unassign(@Body() dto: UnassignDto, @CurrentUser() user: AuthUser) {
-    return this.assignments.unassign(dto.ids, user.sub);
+    return this.assignments.unassign(dto.ids, user.sub, dto.restorePrevious);
   }
 
   @Roles(Role.ADMIN)

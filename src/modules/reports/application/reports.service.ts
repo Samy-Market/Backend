@@ -5,6 +5,7 @@ import { Clock } from '../../../shared/application/ports/clock';
 import { BusinessRuleError, NotFoundError } from '../../../shared/domain/errors';
 import { SchedulePlanner } from '../../schedules/application/schedule-planner';
 import { SiteLocator } from '../../sites/application/site-locator';
+import { TimeOffCalendar } from '../../time-off/application/time-off-calendar';
 import { AttendanceReport, employeeReport, MAX_REPORT_DAYS, sumTotals } from '../domain/attendance-report';
 import { ReportSource } from './ports/report-source';
 
@@ -22,6 +23,7 @@ export class ReportsService {
     private planner: SchedulePlanner,
     private locator: SiteLocator,
     private clock: Clock,
+    private timeOff: TimeOffCalendar,
   ) {}
 
   async attendance(q: ReportQuery): Promise<AttendanceReport> {
@@ -40,11 +42,13 @@ export class ReportsService {
 
     const employees = await this.source.employees({ employeeId: q.employeeId, ...range });
     const ids = employees.map((e) => e.id);
-    const [marks, assignments, transfers, siteNames] = await Promise.all([
+    const [marks, assignments, transfers, siteNames, excused, offRange] = await Promise.all([
       this.source.marks(ids, range.from, toExclusive.plus({ hours: MAX_SESSION_HOURS }).toJSDate()),
       this.planner.rulesFor(ids, fromKey, toKey),
       this.locator.transfersFor(ids, fromKey, toKey),
       this.locator.siteNames(),
+      this.source.justifiedAbsences(ids, fromKey, toKey),
+      this.timeOff.forRange(ids, fromKey, toKey),
     ]);
 
     const now = this.clock.now();
@@ -55,6 +59,8 @@ export class ReportsService {
         records: marks.get(employee.id) ?? [],
         assignments: assignments.get(employee.id) ?? [],
         transfers: transfers.get(employee.id) ?? [],
+        justifiedAbsences: excused.get(employee.id) ?? new Set(),
+        timeOff: offRange.of(employee.id),
         siteNames,
         fromKey,
         toKey,

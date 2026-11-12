@@ -32,3 +32,17 @@ export function losesAdmin(before: StaffUser, changes: StaffChanges): boolean {
 export function mustReconnect(before: StaffUser, changes: StaffChanges): boolean {
   return changes.active === false || (!!changes.role && changes.role !== before.role);
 }
+
+export interface StaffUsage {
+  auditLogs: number;
+  reviews: number;
+  transfers: number;
+}
+
+export function staffDeletionBlocker(u: StaffUsage, isSelf: boolean): string | null {
+  if (isSelf) return 'No puedes eliminar tu propio usuario.';
+  if (u.auditLogs || u.reviews || u.transfers) {
+    return 'Ya hizo cambios en el sistema (revisó justificaciones, registró traslados o editó datos) y ese historial debe conservarse. Desactívalo en su lugar.';
+  }
+  return null;
+}

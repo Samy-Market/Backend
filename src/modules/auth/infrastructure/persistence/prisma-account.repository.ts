@@ -11,6 +11,7 @@ const ACCOUNT_SELECT = {
   role: true,
   active: true,
   passwordHash: true,
+  passwordChangedAt: true,
   employee: { select: { id: true, active: true } },
 } as const;
 
@@ -38,6 +39,34 @@ export class PrismaAccountRepository extends AccountRepository {
         active: true,
         employee: { select: { id: true, fullName: true, documentId: true, position: true, site: { select: { id: true, name: true } } } },
       },
+    });
+  }
+
+  async updatePassword(id: string, passwordHash: string, changedAt: Date) {
+    await this.prisma.user.update({ where: { id }, data: { passwordHash, passwordChangedAt: changedAt } });
+  }
+
+  async createReset(userId: string, tokenHash: string, expiresAt: Date) {
+    await this.prisma.$transaction([
+      this.prisma.passwordReset.deleteMany({ where: { userId, usedAt: null } }),
+      this.prisma.passwordReset.create({ data: { userId, tokenHash, expiresAt } }),
+    ]);
+  }
+
+  findReset(tokenHash: string) {
+    return this.prisma.passwordReset.findUnique({
+      where: { tokenHash },
+      select: { id: true, userId: true, expiresAt: true, usedAt: true },
+    });
+  }
+
+  async completeReset(resetId: string, userId: string, passwordHash: string, at: Date) {
+    return this.prisma.$transaction(async (tx) => {
+      const used = await tx.passwordReset.updateMany({ where: { id: resetId, usedAt: null }, data: { usedAt: at } });
+      if (used.count === 0) return false;
+      await tx.user.update({ where: { id: userId }, data: { passwordHash, passwordChangedAt: at } });
+      await tx.passwordReset.deleteMany({ where: { userId, id: { not: resetId } } });
+      return true;
     });
   }
 

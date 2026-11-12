@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SchedulesModule } from '../schedules/schedules.module';
 import { SitesModule } from '../sites/sites.module';
+import { TimeOffModule } from '../time-off/time-off.module';
 import { AttendanceService } from './application/attendance.service';
 import { AttendanceRoster } from './application/ports/attendance-roster';
 import { MarkRepository } from './application/ports/mark.repository';
@@ -9,7 +10,7 @@ import { PrismaAttendanceRoster } from './infrastructure/persistence/prisma-atte
 import { PrismaMarkRepository } from './infrastructure/persistence/prisma-mark.repository';
 
 @Module({
-  imports: [SchedulesModule, SitesModule],
+  imports: [SchedulesModule, SitesModule, TimeOffModule],
   controllers: [AttendanceController],
   providers: [
     AttendanceService,

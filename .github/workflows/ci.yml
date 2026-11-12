@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Lint, pruebas, migraciones y arranque
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:ci@localhost:5432/ci
+      # Solo para esta prueba; el secreto real vive en Railway.
+      JWT_SECRET: ci-solo-para-pruebas
+      PORT: 3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+
+      - name: Formato
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Tipos
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Pruebas
+        run: npm test -- --ci
+
+      - name: Las migraciones aplican sobre una base vacía
+        run: npx prisma migrate deploy
+      - name: El esquema coincide con las migraciones
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - name: Datos de ejemplo
+        run: npx prisma db seed
+
+      - name: Build
+        run: npm run build
+
+      - name: La API arranca y permite iniciar sesión
+        run: |
+          node dist/main.js > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:3000/health > /dev/null && break; sleep 1; done
+          curl -sf localhost:3000/health
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:3000/auth/login \
+            -H 'content-type: application/json' -d '{"email":"admin@empresa.com","password":"Admin123*"}')
+          echo "login → $code"
+          test "$code" = 200
+      - name: Log de la API si falló
+        if: failure()
+        run: cat api.log || true

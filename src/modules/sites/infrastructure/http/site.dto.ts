@@ -7,6 +7,11 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsInt,
+  IsNumber,
+  Max,
+  Min,
+  ValidateIf,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -32,6 +37,24 @@ export class CreateSiteDto {
   @IsOptional()
   @IsBoolean({ message: 'El estado activo debe ser verdadero o falso.' })
   active?: boolean;
+
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsNumber({}, { message: 'La latitud debe ser un número.' })
+  @Min(-90, { message: 'La latitud debe estar entre -90 y 90.' })
+  @Max(90, { message: 'La latitud debe estar entre -90 y 90.' })
+  lat?: number | null;
+
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsNumber({}, { message: 'La longitud debe ser un número.' })
+  @Min(-180, { message: 'La longitud debe estar entre -180 y 180.' })
+  @Max(180, { message: 'La longitud debe estar entre -180 y 180.' })
+  lng?: number | null;
+
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsInt({ message: 'El radio debe ser un número entero de metros.' })
+  @Min(30, { message: 'El radio debe estar entre 30 y 2000 metros.' })
+  @Max(2000, { message: 'El radio debe estar entre 30 y 2000 metros.' })
+  radiusMeters?: number | null;
 }
 
 export class UpdateSiteDto extends PartialType(CreateSiteDto) {}

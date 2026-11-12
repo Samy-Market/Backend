@@ -13,7 +13,7 @@ export class AttendanceController {
   @Roles(Role.EMPLOYEE)
   @Post('mark')
   mark(@CurrentUser() user: AuthUser, @Body() dto: MarkAttendanceDto) {
-    return this.attendance.mark(user.employeeId, dto.expectedType);
+    return this.attendance.mark(user.employeeId, dto.expectedType, dto.location);
   }
 
   @Roles(Role.EMPLOYEE)

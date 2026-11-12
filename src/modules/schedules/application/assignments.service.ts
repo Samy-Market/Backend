@@ -4,7 +4,7 @@ import { Clock } from '../../../shared/application/ports/clock';
 import { UnitOfWork } from '../../../shared/application/ports/unit-of-work';
 import { addDays, DayRange, isValidDayKey, rangesOverlap } from '../../../shared/domain/calendar';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/domain/errors';
-import { assignmentStatus, AssignmentStatus, trimmedEndFor, unassignAction } from '../domain/schedule-plan';
+import { assignmentStatus, AssignmentStatus, trimmedEndFor, unassignOutcome } from '../domain/schedule-plan';
 import { AssignmentRecord, AssignmentRepository } from './ports/assignment.repository';
 import { EmployeeLookup } from './ports/employee-lookup';
 import { SchedulesService } from './schedules.service';
@@ -49,12 +49,12 @@ export class AssignmentsService {
       async (tx) => {
         const existing = await this.assignments.listByEmployees(input.employeeIds, tx);
         const conflicts: string[] = [];
-        const trims: { id: string; employeeId: string; endDate: string; before: string | null }[] = [];
+        const trims: { id: string; employeeId: string; endDate: string; before: string | null; record: AssignmentRecord }[] = [];
         for (const e of employees) {
           for (const a of existing.filter((x) => x.employeeId === e.id)) {
             if (!rangesOverlap(a, range)) continue;
             const newEnd = trimmedEndFor(a, range.startDate);
-            if (newEnd) trims.push({ id: a.id, employeeId: e.id, endDate: newEnd, before: a.endDate });
+            if (newEnd) trims.push({ id: a.id, employeeId: e.id, endDate: newEnd, before: a.endDate, record: a });
             else
               conflicts.push(`${e.fullName} ya tiene "${a.schedule.name}" desde ${a.startDate}${a.endDate ? ` hasta ${a.endDate}` : ''}.`);
           }
@@ -65,7 +65,7 @@ export class AssignmentsService {
           );
         }
 
-        for (const t of trims) await this.assignments.updateEnd(t.id, t.endDate, tx);
+        for (const t of trims) await this.assignments.trim(t.record, t.endDate, tx);
         for (const e of employees) await this.assignments.create(e.id, schedule.id, range, tx);
         await this.audit.record(
           {
@@ -73,7 +73,12 @@ export class AssignmentsService {
             action: 'ASSIGN',
             entity: 'Schedule',
             entityId: schedule.id,
-            after: { schedule: schedule.name, ...range, employees: employees.map((e) => e.fullName), closedPrevious: trims },
+            after: {
+              schedule: schedule.name,
+              ...range,
+              employees: employees.map((e) => e.fullName),
+              closedPrevious: trims.map(({ record: _r, ...t }) => t),
+            },
           },
           tx,
         );
@@ -150,25 +155,75 @@ export class AssignmentsService {
     return (await this.assignments.listBySchedule(scheduleId, today)).map((m) => ({ ...m, status: assignmentStatus(m, today) }));
   }
 
-  async unassign(ids: string[], actorId: string) {
+  async previewUnassign(ids: string[]) {
     const today = this.clock.today();
+    const found = await this.assignments.findMany(ids);
+    if (found.length !== new Set(ids).size) throw new NotFoundError('Alguna de las asignaciones ya no existe.');
+    const employeeIds = [...new Set(found.map((a) => a.employeeId))];
+    const [all, people] = await Promise.all([this.assignments.listByEmployees(employeeIds), this.employees.findMany(employeeIds)]);
+    const names = new Map(people.map((p) => [p.id, p.fullName]));
+    const inactive = await this.inactiveSchedules(all.map((a) => a.schedule.id));
+    return found.map((a) => {
+      const o = unassignOutcome(
+        a,
+        all.filter((x) => x.employeeId === a.employeeId),
+        today,
+      );
+      return {
+        id: a.id,
+        employee: { id: a.employeeId, fullName: names.get(a.employeeId) ?? '—' },
+        schedule: a.schedule,
+        action: o.action.kind,
+        gap: o.gap,
+        previous: o.previous && {
+          schedule: o.previous.schedule,
+          until: o.previous.until,
+          canRestore: !inactive.has(o.previous.schedule.id),
+        },
+      };
+    });
+  }
+
+  async unassign(ids: string[], actorId: string, restorePrevious = false) {
+    const today = this.clock.today();
+    const inactive = restorePrevious ? await this.inactiveSchedules(await this.previousScheduleIds(ids)) : new Set<string>();
     return this.uow.run(
       async (tx) => {
         const found = await this.assignments.findMany(ids, tx);
         if (found.length !== new Set(ids).size) throw new NotFoundError('Alguna de las asignaciones ya no existe.');
+        const all = await this.assignments.listByEmployees([...new Set(found.map((a) => a.employeeId))], tx);
         let deleted = 0;
         let ended = 0;
+        let restored = 0;
         const skipped: string[] = [];
         for (const a of found) {
-          const action = unassignAction(a, today);
-          if (action.kind === 'delete') {
+          const o = unassignOutcome(
+            a,
+            all.filter((x) => x.employeeId === a.employeeId),
+            today,
+          );
+          if (o.action.kind === 'delete') {
             await this.assignments.delete(a.id, tx);
             deleted++;
-          } else if (action.kind === 'end') {
-            await this.assignments.updateEnd(a.id, action.endDate, tx);
+          } else if (o.action.kind === 'end') {
+            await this.assignments.updateEnd(a.id, o.action.endDate, tx);
             ended++;
           } else {
-            skipped.push(action.reason);
+            skipped.push(o.action.reason);
+            continue;
+          }
+          if (restorePrevious && o.restore && o.previous && !inactive.has(o.previous.schedule.id)) {
+            const plan = o.restore;
+            if (plan.kind === 'extend') {
+              await this.assignments.restoreEnd(
+                all.find((x) => x.id === plan.id)!,
+                plan.endDate,
+                tx,
+              );
+            } else {
+              await this.assignments.create(a.employeeId, plan.scheduleId, { startDate: plan.startDate, endDate: plan.endDate }, tx);
+            }
+            restored++;
           }
         }
         await this.audit.record(
@@ -184,11 +239,11 @@ export class AssignmentsService {
               startDate: a.startDate,
               endDate: a.endDate,
             })),
-            after: { deleted, ended, endDate: today },
+            after: { deleted, ended, restored, endDate: today },
           },
           tx,
         );
-        return { deleted, ended, skipped: skipped.length };
+        return { deleted, ended, restored, skipped: skipped.length };
       },
       { lockKey: LOCK },
     );
@@ -204,6 +259,18 @@ export class AssignmentsService {
       }
     }
     return result;
+  }
+
+  private async previousScheduleIds(ids: string[]) {
+    const found = await this.assignments.findMany(ids);
+    const all = await this.assignments.listByEmployees([...new Set(found.map((a) => a.employeeId))]);
+    return all.map((a) => a.schedule.id);
+  }
+
+  private async inactiveSchedules(scheduleIds: string[]): Promise<Set<string>> {
+    const unique = [...new Set(scheduleIds)];
+    const schedules = await Promise.all(unique.map((id) => this.schedules.get(id)));
+    return new Set(schedules.filter((s) => !s.active).map((s) => s.id));
   }
 
   private view(a: AssignmentRecord, today: string): AssignmentView {

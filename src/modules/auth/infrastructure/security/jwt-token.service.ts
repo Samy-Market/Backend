@@ -13,9 +13,9 @@ export class JwtTokenService extends TokenService {
     return this.jwt.signAsync(user);
   }
 
-  async verify(token: string): Promise<AuthUser | null> {
+  async verify(token: string): Promise<(AuthUser & { iat?: number }) | null> {
     try {
-      return await this.jwt.verifyAsync<AuthUser>(token);
+      return await this.jwt.verifyAsync<AuthUser & { iat?: number }>(token);
     } catch {
       return null;
     }

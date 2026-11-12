@@ -8,6 +8,7 @@ import {
   ScheduleRule,
   trimmedEndFor,
   unassignAction,
+  unassignOutcome,
 } from './schedule-plan';
 
 const ZONE = 'America/Guayaquil';
@@ -161,5 +162,53 @@ describe('Eliminar horarios y quitar asignaciones', () => {
     expect(unassignAction({ startDate: today, endDate: null }, today)).toEqual({ kind: 'delete' });
     expect(unassignAction({ startDate: '2026-08-01', endDate: today }, today).kind).toBe('none');
     expect(unassignAction({ startDate: '2026-05-01', endDate: '2026-07-31' }, today).kind).toBe('none');
+  });
+});
+
+describe('Quitar un horario y volver al anterior', () => {
+  const today = '2026-11-12';
+  const rotA = { id: 'a', name: 'Rotación A' };
+  const rotB = { id: 'b', name: 'Rotación B' };
+  const prev = { id: 'p', schedule: rotA, startDate: '2026-01-01', endDate: '2026-11-14' };
+
+  it('uno que aún no empieza: se elimina y el anterior se extiende hasta donde llegaba', () => {
+    const next = { id: 'n', schedule: rotB, startDate: '2026-11-15', endDate: null };
+    const o = unassignOutcome(next, [prev, next], today);
+    expect(o.action.kind).toBe('delete');
+    expect(o.gap).toEqual({ from: '2026-11-15', to: null });
+    expect(o.previous?.schedule.name).toBe('Rotación A');
+    expect(o.restore).toEqual({ kind: 'extend', id: 'p', endDate: null });
+  });
+
+  it('uno en curso: termina hoy y el anterior vuelve desde mañana', () => {
+    const before = { ...prev, endDate: '2026-11-04' };
+    const cur = { id: 'c', schedule: rotB, startDate: '2026-11-05', endDate: '2026-11-30' };
+    const o = unassignOutcome(cur, [before, cur], today);
+    expect(o.action).toEqual({ kind: 'end', endDate: today });
+    expect(o.gap).toEqual({ from: '2026-11-13', to: '2026-11-30' });
+    expect(o.restore).toEqual({ kind: 'create', scheduleId: 'a', startDate: '2026-11-13', endDate: '2026-11-30' });
+  });
+
+  it('si antes había un hueco, no hay horario anterior que restaurar', () => {
+    const before = { ...prev, endDate: '2026-11-01' };
+    const next = { id: 'n', schedule: rotB, startDate: '2026-11-15', endDate: null };
+    const o = unassignOutcome(next, [before, next], today);
+    expect(o.gap).not.toBeNull();
+    expect(o.previous).toBeNull();
+    expect(o.restore).toBeNull();
+  });
+
+  it('si se recortó al asignar el nuevo, vuelve solo hasta donde iba antes', () => {
+    const trimmed = { ...prev, trimmed: true, originalEndDate: '2027-01-21' };
+    const next = { id: 'n', schedule: rotB, startDate: '2026-11-15', endDate: null };
+    const o = unassignOutcome(next, [trimmed, next], today);
+    expect(o.previous?.until).toBe('2027-01-21');
+    expect(o.restore).toEqual({ kind: 'extend', id: 'p', endDate: '2027-01-21' });
+  });
+
+  it('nunca pasa del final del horario quitado (después puede haber otro)', () => {
+    const trimmed = { ...prev, trimmed: true, originalEndDate: null };
+    const next = { id: 'n', schedule: rotB, startDate: '2026-11-15', endDate: '2026-11-30' };
+    expect(unassignOutcome(next, [trimmed, next], today).restore).toEqual({ kind: 'extend', id: 'p', endDate: '2026-11-30' });
   });
 });

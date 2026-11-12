@@ -18,9 +18,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  /** Desactivar a un usuario corta su acceso de inmediato, aunque su token siga vigente. */
-  async validate(payload: AuthUser): Promise<AuthUser> {
-    const user = await this.auth.resolveActiveUser(payload.sub);
+  /** Desactivar a un usuario o cambiar su contraseña corta su acceso de inmediato, aunque su token siga vigente. */
+  async validate(payload: AuthUser & { iat?: number }): Promise<AuthUser> {
+    const user = await this.auth.resolveActiveUser(payload.sub, payload.iat);
     if (!user) throw new UnauthorizedException('Tu usuario está inactivo o no existe.');
     return user;
   }

@@ -4,6 +4,7 @@ import { AttendanceReport, EmployeeReport, ReportDay } from '../../domain/attend
 import { DayPlanView } from '../../../schedules/domain/schedule-plan';
 
 const BRAND = 'FF0F766E';
+const GREEN = 'FF15803D';
 const MUTED = 'FF64748B';
 const RED = 'FFB91C1C';
 const DURATION = '[h]:mm';
@@ -80,10 +81,14 @@ function buildSummary(wb: ExcelJS.Workbook, report: AttendanceReport, period: st
     { header: 'Días programados', key: 'scheduled', width: 12 },
     { header: 'Días trabajados', key: 'days', width: 12 },
     { header: 'Ausencias', key: 'absences', width: 11 },
+    { header: 'Ausencias justificadas', key: 'justAbs', width: 12 },
+    { header: 'Feriados', key: 'holidays', width: 10 },
+    { header: 'Vacaciones / permisos (días)', key: 'leave', width: 13 },
     { header: 'Horas trabajadas', key: 'hours', width: 12, style: { numFmt: DURATION } },
     { header: 'Horas (decimal)', key: 'hoursDec', width: 12, style: { numFmt: '0.00' } },
     { header: 'Días con atraso', key: 'lateDays', width: 11 },
     { header: 'Atraso (h:mm)', key: 'late', width: 12, style: { numFmt: DURATION } },
+    { header: 'Atrasos justificados', key: 'justDays', width: 12 },
     { header: 'Horas suplementarias (h:mm)', key: 'overtime', width: 15, style: { numFmt: DURATION } },
     { header: 'Días con preingreso', key: 'preDays', width: 12 },
     { header: 'Minutos de preingreso', key: 'preMin', width: 12 },
@@ -95,10 +100,14 @@ function buildSummary(wb: ExcelJS.Workbook, report: AttendanceReport, period: st
     scheduled: t.scheduledDays,
     days: t.daysWorked,
     absences: t.absences,
+    justAbs: t.justifiedAbsences,
+    holidays: t.holidays,
+    leave: t.leaveDays,
     hours: asExcelDuration(t.workedMinutes),
     hoursDec: hoursDecimal(t.workedMinutes),
     lateDays: t.lateDays,
     late: asExcelDuration(t.lateMinutes),
+    justDays: t.justifiedLateDays,
     overtime: asExcelDuration(t.overtimeMinutes),
     preDays: t.preEntryDays,
     preMin: t.preEntryMinutes,
@@ -125,7 +134,13 @@ function buildSummary(wb: ExcelJS.Workbook, report: AttendanceReport, period: st
   ws.addRow([]);
   const note = (text: string) => (ws.addRow([text]).font = { italic: true, color: { argb: MUTED } });
   note(`Período: ${period} · Sede: ${report.site?.name ?? 'Todas'} · Zona horaria: ${zone}`);
+  note('Días programados: días de trabajo del período que ya pasaron (el de hoy, solo si ya marcó). Los días futuros no cuentan.');
   note('Horas suplementarias: tiempo trabajado después de la hora de salida del turno, o todo lo trabajado en un día de descanso.');
+  note(
+    'Feriados y vacaciones/permisos: días de trabajo que no se cuentan como programados ni como ausencia. Lo trabajado en un feriado es suplementario.',
+  );
+  note('Ausencias justificadas: días sin marcar con una justificación aprobada; no suman a las ausencias ni a las horas.');
+  note('Atrasos justificados: tienen una justificación aprobada y no suman a los días ni a las horas de atraso.');
   note('Preingreso: minutos que llegó antes de su hora de entrada; no suman a las horas trabajadas.');
   note(`Generado: ${localDateTime(report.generatedAt, zone)}`);
 
@@ -199,6 +214,7 @@ function buildEmployeeSheet(wb: ExcelJS.Workbook, name: string, e: EmployeeRepor
     for (const k of ['in', 'out']) row.getCell(k).alignment = { horizontal: 'center' };
 
     if (d?.absent) row.getCell('notes').font = { color: { argb: RED }, bold: true };
+    else if (d?.absenceJustified || (d?.dayOff && !d.firstIn)) row.getCell('notes').font = { color: { argb: GREEN } };
     else if (!d) row.font = { color: { argb: MUTED } };
     if (d?.isLate) row.getCell('late').font = { color: { argb: RED }, bold: true };
     if (d && d.overtimeMinutes > 0) row.getCell('overtime').font = { color: { argb: BRAND }, bold: true };
@@ -213,7 +229,10 @@ function buildEmployeeSheet(wb: ExcelJS.Workbook, name: string, e: EmployeeRepor
     hours: sum('G', t.workedMinutes),
     late: sum('H', t.lateMinutes),
     overtime: sum('I', t.overtimeMinutes),
-    notes: `Días trabajados: ${t.daysWorked} · Ausencias: ${t.absences}`,
+    notes:
+      `Días trabajados: ${t.daysWorked} · Ausencias: ${t.absences}` +
+      (t.justifiedAbsences ? ` · Ausencias justificadas: ${t.justifiedAbsences}` : '') +
+      (t.justifiedLateDays ? ` · Atrasos justificados: ${t.justifiedLateDays}` : ''),
   });
   total.font = { bold: true };
   total.border = { top: { style: 'thin' } };
@@ -228,9 +247,18 @@ function notesFor(plan: DayPlanView, d: ReportDay | undefined, today: string): s
     return plan.kind === 'REST' ? 'Descanso' : 'Sin horario asignado';
   }
   if (d.absent) return 'No marcó';
+  if (d.absenceJustified) return 'Ausencia justificada';
+  if (d.dayOff && !d.firstIn) return d.dayOff.label;
   const notes: string[] = [];
+  if (d.dayOff)
+    notes.push(
+      d.dayOff.kind === 'HOLIDAY'
+        ? `Trabajó en feriado (${d.dayOff.label.replace('Feriado: ', '')})`
+        : `Trabajó durante ${d.dayOff.label.toLowerCase()}`,
+    );
   if (plan.kind === 'REST') notes.push('Trabajó en día de descanso');
   if (d.isLate) notes.push(`Atraso ${d.lateMinutes} min`);
+  if (d.lateJustified) notes.push(`Atraso ${d.lateMinutes} min justificado`);
   if (d.preEntryMinutes > 0) notes.push(`Preingreso ${d.preEntryMinutes} min`);
   if (d.openSession) notes.push('Sin marca de salida');
   return notes.join(' · ');

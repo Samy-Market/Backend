@@ -17,7 +17,11 @@ const toRecord = (r: Row): AssignmentRecord => ({
   startDate: fromDbDate(r.startDate)!,
   endDate: fromDbDate(r.endDate),
   schedule: { id: r.schedule.id, name: r.schedule.name },
+  trimmed: r.trimmed,
+  originalEndDate: fromDbDate(r.originalEndDate),
 });
+
+const dbDate = (k: string | null) => (k ? toDbDate(k) : null);
 
 const overlapping = (fromKey: string, toKey: string): Prisma.ScheduleAssignmentWhereInput => ({
   startDate: { lte: toDbDate(toKey) },
@@ -89,6 +93,21 @@ export class PrismaAssignmentRepository extends AssignmentRepository {
         data: { employeeId, scheduleId, startDate: toDbDate(range.startDate), endDate: range.endDate ? toDbDate(range.endDate) : null },
       }),
     );
+  }
+
+  async trim(a: AssignmentRecord, endDate: string, tx?: TransactionContext): Promise<void> {
+    await db(this.prisma, tx).scheduleAssignment.update({
+      where: { id: a.id },
+      data: { endDate: toDbDate(endDate), trimmed: true, originalEndDate: dbDate(a.trimmed ? a.originalEndDate : a.endDate) },
+    });
+  }
+
+  async restoreEnd(a: AssignmentRecord, endDate: string | null, tx?: TransactionContext): Promise<void> {
+    const complete = a.trimmed && endDate === a.originalEndDate;
+    await db(this.prisma, tx).scheduleAssignment.update({
+      where: { id: a.id },
+      data: { endDate: dbDate(endDate), ...(complete && { trimmed: false, originalEndDate: null }) },
+    });
   }
 
   async updateEnd(id: string, endDate: string | null, tx?: TransactionContext): Promise<AssignmentRecord> {

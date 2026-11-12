@@ -125,4 +125,8 @@ export class UnassignDto {
   @ArrayUnique({ message: 'Hay asignaciones repetidas.' })
   @IsUUID('4', { each: true, message: 'Asignación inválida.' })
   ids: string[];
+
+  @IsOptional()
+  @IsBoolean({ message: 'restorePrevious debe ser verdadero o falso.' })
+  restorePrevious?: boolean;
 }
