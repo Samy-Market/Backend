@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
-import { APP_TIMEZONE, MAX_SESSION_HOURS } from '../../../config/app.config';
+import { APP_TIMEZONE, MAX_SESSION_HOURS, WORKDAY } from '../../../config/app.config';
 import { Clock } from '../../../shared/application/ports/clock';
 import { BusinessRuleError, NotFoundError } from '../../../shared/domain/errors';
 import { SchedulePlanner } from '../../schedules/application/schedule-planner';
@@ -70,6 +70,7 @@ export class ReportsService {
         siteId: q.siteId,
         zone: APP_TIMEZONE,
         maxSessionHours: MAX_SESSION_HOURS,
+        workday: WORKDAY,
       }),
     );
 
@@ -78,6 +79,7 @@ export class ReportsService {
       from: fromKey,
       to: toKey,
       timezone: APP_TIMEZONE,
+      workday: { dailyMinutes: WORKDAY.dailyMinutes, lunchMinutes: WORKDAY.lunchMinutes },
       generatedAt: now,
       totals: sumTotals(visible),
       site: q.siteId ? { id: q.siteId, name: siteNames.get(q.siteId) ?? '—' } : null,

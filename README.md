@@ -86,6 +86,8 @@ El seed también crea una sede ("Matriz Guayaquil") y marcaciones de ejemplo de 
 | `CORS_ORIGINS`                  | `http://localhost:5173,…`                                      | Orígenes del frontend permitidos (REST y WebSocket), separados por coma                               |
 | `APP_TIMEZONE`                  | `America/Guayaquil`                                            | Zona de referencia para días, atrasos y reportes                                                      |
 | `MAX_SESSION_HOURS`             | `16`                                                           | Horas tras las que un ingreso sin salida se considera abandonado                                      |
+| `DAILY_WORK_HOURS`              | `8`                                                            | Jornada ordinaria diaria en horas netas; lo que pasa de aquí es suplementario                         |
+| `LUNCH_MINUTES`                 | `60`                                                           | Almuerzo que se descuenta en jornadas de más de la mitad de la jornada (`0` lo desactiva)             |
 | `SETUP_CODE`                    | —                                                              | Opcional. Si existe, el formulario de configuración inicial (crear el primer admin) exige este código |
 
 ## Sedes y traslados

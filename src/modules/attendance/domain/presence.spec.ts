@@ -28,3 +28,21 @@ describe('Atraso de hoy en la presencia', () => {
     expect(p.lateMinutes).toBe(13);
   });
 });
+
+describe('Almuerzo en el contador de hoy', () => {
+  const workday = { dailyMinutes: 480, lunchMinutes: 60, lunchAfterMinutes: 240 };
+  const onTime = { id: 'm2', type: 'IN', timestamp: local('2026-11-13T08:00') } as MarkRecord & { id: string };
+  const at = (hhmm: string) => presenceOf({ ...base, records: [onTime], last: onTime, now: local(`2026-11-13T${hhmm}`), workday });
+
+  it('antes de 4 horas no descuenta y avisa cuándo empieza', () => {
+    expect(at('11:00')).toMatchObject({ workedMinutesToday: 180, lunch: { deducted: 0, pending: 60, startsIn: 60 } });
+  });
+
+  it('entre las 4 y 5 horas el contador se detiene mientras corre el almuerzo', () => {
+    expect(at('12:30')).toMatchObject({ workedMinutesToday: 240, lunch: { deducted: 30, pending: 30, startsIn: 0 } });
+  });
+
+  it('pasado el almuerzo vuelve a contar', () => {
+    expect(at('17:00')).toMatchObject({ workedMinutesToday: 480, lunch: { deducted: 60, pending: 0 } });
+  });
+});

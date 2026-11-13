@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
-import { APP_TIMEZONE, MAX_SESSION_HOURS } from '../../../config/app.config';
+import { APP_TIMEZONE, MAX_SESSION_HOURS, WORKDAY } from '../../../config/app.config';
 import { Clock } from '../../../shared/application/ports/clock';
 import { RealtimeNotifier } from '../../../shared/application/ports/realtime-notifier';
 import { UnitOfWork } from '../../../shared/application/ports/unit-of-work';
@@ -242,7 +242,16 @@ export class AttendanceService {
     now: Date,
     justifiedMarkIds: Set<string>,
   ): Presence {
-    return presenceOf({ records, last, plan, now, zone: APP_TIMEZONE, maxSessionHours: MAX_SESSION_HOURS, justifiedMarkIds });
+    return presenceOf({
+      records,
+      last,
+      plan,
+      now,
+      zone: APP_TIMEZONE,
+      maxSessionHours: MAX_SESSION_HOURS,
+      justifiedMarkIds,
+      workday: WORKDAY,
+    });
   }
 
   private justifiedLateIns(records: Mark[]): Promise<Set<string>> {
@@ -253,7 +262,7 @@ export class AttendanceService {
     const records = await this.marks.between(employeeId, from, new Date(to.getTime() + MAX_SESSION_HOURS * 3_600_000));
     const fromDay = DateTime.fromJSDate(from, { zone: APP_TIMEZONE }).toISODate()!;
     const toDay = DateTime.fromJSDate(to, { zone: APP_TIMEZONE }).toISODate()!;
-    return summarizeByDay(records, APP_TIMEZONE, now, MAX_SESSION_HOURS)
+    return summarizeByDay(records, APP_TIMEZONE, now, MAX_SESSION_HOURS, WORKDAY)
       .filter((d) => d.date >= fromDay && d.date < toDay)
       .map((d) => ({ ...d, records: d.records.filter((r) => r.timestamp >= from && r.timestamp < to) }));
   }
@@ -271,6 +280,8 @@ function emptyDay(date: string): DaySummary {
     preEntryMinutes: 0,
     lastOut: null,
     workedMinutes: 0,
+    breakMinutes: 0,
+    lunchMinutes: 0,
     sessions: [],
     openSession: false,
     isLate: false,

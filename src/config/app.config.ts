@@ -1,6 +1,20 @@
 export const APP_TIMEZONE = process.env.APP_TIMEZONE || 'America/Guayaquil';
 export const MAX_SESSION_HOURS = Number(process.env.MAX_SESSION_HOURS || 16);
 
+function nonNegative(raw: string | undefined, fallback: number): number {
+  const value = Number(raw ?? fallback);
+  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
+}
+
+const DAILY_MINUTES = Math.round(Number(process.env.DAILY_WORK_HOURS || 8) * 60) || 480;
+
+/** Jornada ordinaria (Código del Trabajo: 8 h diarias) y almuerzo, que no se paga. */
+export const WORKDAY = {
+  dailyMinutes: DAILY_MINUTES,
+  lunchMinutes: nonNegative(process.env.LUNCH_MINUTES, 60),
+  lunchAfterMinutes: Math.floor(DAILY_MINUTES / 2),
+};
+
 export function sessionIdleMinutes(role: string): number {
   const staff = role === 'ADMIN' || role === 'SUPERVISOR';
   const raw = staff ? process.env.SESSION_IDLE_MINUTES_STAFF : process.env.SESSION_IDLE_MINUTES_EMPLOYEE;

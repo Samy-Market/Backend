@@ -12,6 +12,12 @@ export interface MarkRecord {
   creditedFrom?: Date | null;
 }
 
+export interface WorkdayRules {
+  dailyMinutes: number;
+  lunchMinutes: number;
+  lunchAfterMinutes: number;
+}
+
 export interface ShiftRule {
   startTime: string;
   endTime: string;
@@ -130,6 +136,8 @@ export interface DaySummary {
   preEntryMinutes: number;
   lastOut: Date | null;
   workedMinutes: number;
+  breakMinutes: number;
+  lunchMinutes: number;
   sessions: WorkSession[];
   openSession: boolean;
   isLate: boolean;
@@ -137,7 +145,29 @@ export interface DaySummary {
   records: MarkRecord[];
 }
 
-export function summarizeByDay(records: MarkRecord[], zone: string, now: Date, maxSessionHours = DEFAULT_MAX_SESSION_HOURS): DaySummary[] {
+/** El almuerzo no se paga: se descuenta solo en jornadas de más de `lunchAfterMinutes` y menos lo que ya salió entre marcas. */
+export function lunchDeduction(grossMinutes: number, breakMinutes: number, rules: WorkdayRules): number {
+  const due = Math.max(0, rules.lunchMinutes - breakMinutes);
+  return Math.min(due, Math.max(0, grossMinutes - rules.lunchAfterMinutes));
+}
+
+function breaksBetween(sessions: WorkSession[]): number {
+  const sorted = [...sessions].sort((a, b) => a.in.getTime() - b.in.getTime());
+  let total = 0;
+  for (let k = 1; k < sorted.length; k++) {
+    const prevOut = sorted[k - 1].out;
+    if (prevOut && sorted[k].in > prevOut) total += Math.floor((sorted[k].in.getTime() - prevOut.getTime()) / 60_000);
+  }
+  return total;
+}
+
+export function summarizeByDay(
+  records: MarkRecord[],
+  zone: string,
+  now: Date,
+  maxSessionHours = DEFAULT_MAX_SESSION_HOURS,
+  workday?: WorkdayRules,
+): DaySummary[] {
   const dayOf = (d: Date) => DateTime.fromJSDate(d, { zone }).toISODate()!;
   const sessions = buildSessions(records, now, maxSessionHours);
   const days = new Map<string, DaySummary>();
@@ -151,6 +181,8 @@ export function summarizeByDay(records: MarkRecord[], zone: string, now: Date, m
         preEntryMinutes: 0,
         lastOut: null,
         workedMinutes: 0,
+        breakMinutes: 0,
+        lunchMinutes: 0,
         sessions: [],
         openSession: false,
         isLate: false,
@@ -184,6 +216,9 @@ export function summarizeByDay(records: MarkRecord[], zone: string, now: Date, m
   }
 
   for (const d of days.values()) {
+    d.breakMinutes = breaksBetween(d.sessions);
+    d.lunchMinutes = workday ? lunchDeduction(d.workedMinutes, d.breakMinutes, workday) : 0;
+    d.workedMinutes -= d.lunchMinutes;
     d.records.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   }
   return [...days.values()].sort((a, b) => a.date.localeCompare(b.date));

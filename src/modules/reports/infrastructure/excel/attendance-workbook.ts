@@ -135,7 +135,13 @@ function buildSummary(wb: ExcelJS.Workbook, report: AttendanceReport, period: st
   const note = (text: string) => (ws.addRow([text]).font = { italic: true, color: { argb: MUTED } });
   note(`Período: ${period} · Sede: ${report.site?.name ?? 'Todas'} · Zona horaria: ${zone}`);
   note('Días programados: días de trabajo del período que ya pasaron (el de hoy, solo si ya marcó). Los días futuros no cuentan.');
-  note('Horas suplementarias: tiempo trabajado después de la hora de salida del turno, o todo lo trabajado en un día de descanso.');
+  const { dailyMinutes, lunchMinutes } = report.workday;
+  note(
+    `Horas trabajadas: netas. En jornadas de más de ${dailyMinutes / 120} h se descuentan ${lunchMinutes} min de almuerzo, menos lo que ya salió entre marcas.`,
+  );
+  note(
+    `Horas suplementarias: lo que pasa de ${dailyMinutes / 60} h trabajadas en el día, o todo lo trabajado en un día de descanso o feriado.`,
+  );
   note(
     'Feriados y vacaciones/permisos: días de trabajo que no se cuentan como programados ni como ausencia. Lo trabajado en un feriado es suplementario.',
   );
@@ -260,6 +266,7 @@ function notesFor(plan: DayPlanView, d: ReportDay | undefined, today: string, zo
   if (d.isLate) notes.push(`Atraso ${d.lateMinutes} min`);
   if (d.lateJustified) notes.push(`Atraso ${d.lateMinutes} min justificado`);
   if (d.preEntryMinutes > 0) notes.push(`Preingreso ${d.preEntryMinutes} min`);
+  if (d.lunchMinutes > 0) notes.push(`Almuerzo ${d.lunchMinutes} min descontado`);
   if (d.openSession) notes.push('Sin marca de salida');
   if (d.marks.some((m) => m.manual)) notes.push('Marcación registrada por el jefe');
   const credited = d.marks.find((m) => m.creditedFrom);

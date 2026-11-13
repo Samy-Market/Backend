@@ -2,7 +2,7 @@ import { DateTime } from 'luxon';
 import { DayPlanView, AssignmentRule, planForRange, scheduledSoFar, toPlanView } from '../../schedules/domain/schedule-plan';
 import { dayKeyInZone } from '../../../shared/domain/calendar';
 import { siteForDay, TransferRule } from '../../sites/domain/site-rules';
-import { DaySummary, MarkRecord, parseHHmm, summarizeByDay } from '../../attendance/domain/attendance-rules';
+import { DaySummary, MarkRecord, summarizeByDay, WorkdayRules } from '../../attendance/domain/attendance-rules';
 import { DayOff, dayOffFor, TimeOff } from '../../time-off/domain/time-off';
 
 export const MAX_REPORT_DAYS = 366;
@@ -15,6 +15,7 @@ export interface ReportDay {
   preEntryMinutes: number;
   lastOut: Date | null;
   workedMinutes: number;
+  lunchMinutes: number;
   overtimeMinutes: number;
   /** Falso si el atraso tiene una justificación aprobada: así no suma en los totales. */
   isLate: boolean;
@@ -87,6 +88,7 @@ export interface AttendanceReport {
   from: string;
   to: string;
   timezone: string;
+  workday: { dailyMinutes: number; lunchMinutes: number };
   generatedAt: Date;
   totals: ReportTotals & { employees: number };
   site: SiteRef | null;
@@ -117,11 +119,14 @@ export interface EmployeeReportInput {
   siteId?: string;
   zone: string;
   maxSessionHours: number;
+  workday: WorkdayRules;
 }
 
 export function employeeReport(i: EmployeeReportInput): EmployeeReport {
   const siteRef = (id: string): SiteRef => ({ id, name: i.siteNames.get(id) ?? '—' });
-  const summaries = summarizeByDay(i.records, i.zone, i.now, i.maxSessionHours).filter((d) => d.date >= i.fromKey && d.date <= i.toKey);
+  const summaries = summarizeByDay(i.records, i.zone, i.now, i.maxSessionHours, i.workday).filter(
+    (d) => d.date >= i.fromKey && d.date <= i.toKey,
+  );
   const byDay = new Map(summaries.map((d) => [d.date, d]));
   const justified = new Set(i.records.filter((r) => r.justified).map((r) => r.id));
   const manual = new Set(i.records.filter((r) => r.manual).map((r) => r.id));
@@ -150,7 +155,7 @@ export function employeeReport(i: EmployeeReportInput): EmployeeReport {
         !byDay.has(p.date) && !!i.justifiedAbsences?.has(p.date) && !off(p.date),
         off(p.date),
         siteRef(daySite(p.date)),
-        i.zone,
+        i.workday.dailyMinutes,
         justified,
         manual,
       ),
@@ -183,19 +188,10 @@ export function employeeReport(i: EmployeeReportInput): EmployeeReport {
   };
 }
 
-export function overtimeOf(
-  day: Pick<ReportDay, 'date' | 'lastOut' | 'workedMinutes'>,
-  plan: Pick<DayPlanView, 'kind' | 'shift'>,
-  zone: string,
-): number {
-  if (plan.kind === 'REST') return day.workedMinutes;
-  if (plan.kind !== 'WORK' || !plan.shift || !day.lastOut) return 0;
-  const start = parseHHmm(plan.shift.startTime);
-  const end = parseHHmm(plan.shift.endTime);
-  let shiftEnd = DateTime.fromISO(day.date, { zone }).set({ hour: end.hour, minute: end.minute });
-  if (end.hour * 60 + end.minute <= start.hour * 60 + start.minute) shiftEnd = shiftEnd.plus({ days: 1 });
-  const after = Math.floor((day.lastOut.getTime() - shiftEnd.toMillis()) / 60_000);
-  return Math.min(day.workedMinutes, Math.max(0, after));
+/** Suplementarias: lo que pasa de la jornada ordinaria. En descanso o feriado, todo lo trabajado. */
+export function overtimeOf(workedMinutes: number, plan: Pick<DayPlanView, 'kind'>, dayOff: DayOff | null, dailyMinutes: number): number {
+  if (plan.kind === 'REST' || dayOff?.kind === 'HOLIDAY') return workedMinutes;
+  return Math.max(0, workedMinutes - dailyMinutes);
 }
 
 export function sumTotals(reports: EmployeeReport[]): ReportTotals & { employees: number } {
@@ -231,7 +227,7 @@ function toReportDay(
   absenceJustified: boolean,
   dayOff: DayOff | null,
   site: SiteRef,
-  zone: string,
+  dailyMinutes: number,
   justified: Set<string>,
   manual: Set<string>,
 ): ReportDay {
@@ -242,7 +238,8 @@ function toReportDay(
     preEntryMinutes: d.preEntryMinutes,
     lastOut: d.lastOut,
     workedMinutes: d.workedMinutes,
-    overtimeMinutes: dayOff?.kind === 'HOLIDAY' ? d.workedMinutes : overtimeOf(d, plan, zone),
+    lunchMinutes: d.lunchMinutes,
+    overtimeMinutes: overtimeOf(d.workedMinutes, plan, dayOff, dailyMinutes),
     isLate: d.isLate && !lateJustified && !dayOff,
     lateMinutes: d.lateMinutes,
     lateJustified,
@@ -295,6 +292,8 @@ function emptySummary(date: string): DaySummary {
     preEntryMinutes: 0,
     lastOut: null,
     workedMinutes: 0,
+    breakMinutes: 0,
+    lunchMinutes: 0,
     sessions: [],
     openSession: false,
     isLate: false,

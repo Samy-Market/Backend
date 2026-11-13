@@ -1,6 +1,6 @@
 import { DateTime } from 'luxon';
 import { DayPlan, DayPlanView, toPlanView } from '../../schedules/domain/schedule-plan';
-import { MarkRecord, MarkType, nextMarkType, parseHHmm, summarizeByDay, sumWorkedMinutes } from './attendance-rules';
+import { MarkRecord, MarkType, nextMarkType, parseHHmm, summarizeByDay, sumWorkedMinutes, WorkdayRules } from './attendance-rules';
 
 export type PresenceStatus = 'INSIDE' | 'OUTSIDE' | 'NOT_MARKED';
 
@@ -12,6 +12,7 @@ export interface Presence {
   preEntryMinutesToday: number;
   countingFrom: Date | null;
   workedMinutesToday: number;
+  lunch: { deducted: number; pending: number; startsIn: number };
   openSession: boolean;
   isLate: boolean;
   lateMinutes: number;
@@ -28,16 +29,17 @@ export interface PresenceInput {
   zone: string;
   maxSessionHours: number;
   justifiedMarkIds?: Set<string>;
+  workday?: WorkdayRules;
 }
 
 export function statusWindowStart(now: Date, zone: string, maxSessionHours: number): Date {
   return DateTime.fromJSDate(now, { zone }).startOf('day').minus({ hours: maxSessionHours }).toJSDate();
 }
 
-export function presenceOf({ records, last, plan, now, zone, maxSessionHours, justifiedMarkIds }: PresenceInput): Presence {
+export function presenceOf({ records, last, plan, now, zone, maxSessionHours, justifiedMarkIds, workday }: PresenceInput): Presence {
   const shift = plan.kind === 'WORK' ? plan.shift : null;
   const today = DateTime.fromJSDate(now, { zone });
-  const days = summarizeByDay(records, zone, now, maxSessionHours);
+  const days = summarizeByDay(records, zone, now, maxSessionHours, workday);
   const todaySummary = days.find((d) => d.date === today.toISODate());
 
   const nextType = nextMarkType(last, now, maxSessionHours);
@@ -50,6 +52,14 @@ export function presenceOf({ records, last, plan, now, zone, maxSessionHours, ju
     : undefined;
   const running = inside ? days.flatMap((d) => d.sessions).find((s) => s.open && !s.stale) : undefined;
   const workedMinutesToday = (todaySummary?.workedMinutes ?? 0) + (currentOpen ? sumWorkedMinutes([currentOpen]) : 0);
+
+  const gross = (todaySummary?.workedMinutes ?? 0) + (todaySummary?.lunchMinutes ?? 0);
+  const lunchDue = workday ? Math.max(0, workday.lunchMinutes - (todaySummary?.breakMinutes ?? 0)) : 0;
+  const lunch = {
+    deducted: todaySummary?.lunchMinutes ?? 0,
+    pending: lunchDue - (todaySummary?.lunchMinutes ?? 0),
+    startsIn: workday ? Math.max(0, workday.lunchAfterMinutes - gross) : 0,
+  };
 
   const late = todaySummary?.isLate ?? false;
   const lateJustified = late && todaySummary!.records.some((r) => r.type === 'IN' && r.isLate && !!r.id && !!justifiedMarkIds?.has(r.id));
@@ -69,6 +79,7 @@ export function presenceOf({ records, last, plan, now, zone, maxSessionHours, ju
     preEntryMinutesToday: todaySummary?.preEntryMinutes ?? 0,
     countingFrom: running?.countedFrom ?? null,
     workedMinutesToday,
+    lunch,
     openSession: inside || !!todaySummary?.openSession,
     isLate: late && !lateJustified,
     lateMinutes: todaySummary?.lateMinutes ?? 0,
