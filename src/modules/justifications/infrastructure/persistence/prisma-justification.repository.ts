@@ -72,6 +72,69 @@ export class PrismaJustificationRepository extends JustificationRepository {
     return row ? withDayKey(row) : null;
   }
 
+  async markAndNext(attendanceId: string, tx?: TransactionContext) {
+    const client = db(this.prisma, tx);
+    const mark = await client.attendance.findUnique({
+      where: { id: attendanceId },
+      select: { type: true, timestamp: true, siteId: true, employeeId: true, isLate: true },
+    });
+    if (!mark) return null;
+    const [next, previous] = await Promise.all([
+      client.attendance.findFirst({
+        where: { employeeId: mark.employeeId, timestamp: { gt: mark.timestamp } },
+        orderBy: { timestamp: 'asc' },
+        select: { type: true, timestamp: true },
+      }),
+      client.attendance.findFirst({
+        where: { employeeId: mark.employeeId, timestamp: { lt: mark.timestamp } },
+        orderBy: { timestamp: 'desc' },
+        select: { type: true, timestamp: true },
+      }),
+    ]);
+    return { mark, next, previous };
+  }
+
+  async createManualMark(
+    employeeId: string,
+    mark: { type: 'IN' | 'OUT'; timestamp: Date; isLate?: boolean; lateMinutes?: number; preEntryMinutes?: number },
+    siteId: string | null,
+    justificationId: string,
+    tx: TransactionContext,
+  ) {
+    await db(this.prisma, tx).attendance.create({ data: { employeeId, siteId, source: 'MANUAL', justificationId, ...mark } });
+  }
+
+  async setCredit(attendanceId: string, at: Date, justificationId: string, tx: TransactionContext) {
+    await db(this.prisma, tx).attendance.update({ where: { id: attendanceId }, data: { creditedFrom: at, justificationId } });
+  }
+
+  async changedMarks(justificationId: string, tx: TransactionContext) {
+    const rows = await db(this.prisma, tx).attendance.findMany({
+      where: { justificationId },
+      select: { id: true, source: true, _count: { select: { justifications: true } } },
+    });
+    return rows.map((r) => ({ id: r.id, manual: r.source === 'MANUAL', justified: r._count.justifications > 0 }));
+  }
+
+  async undoMarks(justificationId: string, manualIds: string[], tx: TransactionContext) {
+    const client = db(this.prisma, tx);
+    if (manualIds.length) await client.attendance.deleteMany({ where: { id: { in: manualIds } } });
+    await client.attendance.updateMany({ where: { justificationId }, data: { creditedFrom: null, justificationId: null } });
+  }
+
+  async reopen(id: string, tx: TransactionContext) {
+    const res = await db(this.prisma, tx).justification.updateMany({
+      where: { id, status: { not: 'PENDING' } },
+      data: { status: 'PENDING', reviewedBy: null, reviewedAt: null, reviewNote: null },
+    });
+    return res.count > 0;
+  }
+
+  async employeeSite(employeeId: string) {
+    const e = await this.prisma.employee.findUniqueOrThrow({ where: { id: employeeId }, select: { siteId: true } });
+    return e.siteId;
+  }
+
   async reviewIfPending(id: string, review: Review, tx: TransactionContext) {
     const res = await db(this.prisma, tx).justification.updateMany({ where: { id, status: 'PENDING' }, data: review });
     return res.count > 0;

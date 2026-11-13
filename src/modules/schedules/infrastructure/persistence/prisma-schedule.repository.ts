@@ -6,7 +6,7 @@ import { PrismaService } from '../../../../shared/infrastructure/prisma/prisma.s
 import { ScheduleData, ScheduleDetail, ScheduleRepository, WeekDayInput } from '../../application/ports/schedule.repository';
 import { ScheduleUsage } from '../../domain/schedule-plan';
 
-export const SHIFT_SELECT = { id: true, name: true, startTime: true, endTime: true, toleranceMinutes: true } satisfies Prisma.ShiftSelect;
+const SHIFT_SELECT = { id: true, name: true, startTime: true, endTime: true, toleranceMinutes: true } satisfies Prisma.ShiftSelect;
 export const SCHEDULE_INCLUDE = {
   days: { orderBy: { weekday: 'asc' }, include: { shift: { select: SHIFT_SELECT } } },
 } satisfies Prisma.ScheduleInclude;

@@ -8,6 +8,8 @@ export interface Mark {
   isLate: boolean;
   lateMinutes: number;
   preEntryMinutes: number;
+  source?: string;
+  creditedFrom?: Date | null;
 }
 
 export interface StoredMark extends Mark {

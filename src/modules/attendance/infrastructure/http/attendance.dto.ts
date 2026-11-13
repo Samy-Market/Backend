@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import { IsIn, IsNumber, IsOptional, Matches, Max, Min, ValidateNested } from 'class-validator';
 
-export class DeviceLocationDto {
+class DeviceLocationDto {
   @IsNumber({}, { message: 'Ubicación inválida.' })
   @Min(-90, { message: 'Ubicación inválida.' })
   @Max(90, { message: 'Ubicación inválida.' })

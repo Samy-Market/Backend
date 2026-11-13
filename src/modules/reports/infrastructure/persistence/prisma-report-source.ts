@@ -51,13 +51,15 @@ export class PrismaReportSource extends ReportSource {
         lateMinutes: true,
         preEntryMinutes: true,
         siteId: true,
+        source: true,
+        creditedFrom: true,
         justifications: { where: { status: 'APPROVED' }, select: { id: true }, take: 1 },
       },
     });
     const map = new Map<string, ReportMark[]>();
-    for (const { employeeId, justifications, ...mark } of rows) {
+    for (const { employeeId, justifications, source, ...mark } of rows) {
       const list = map.get(employeeId) ?? [];
-      list.push({ ...mark, justified: justifications.length > 0 });
+      list.push({ ...mark, justified: justifications.length > 0, manual: source === 'MANUAL' });
       map.set(employeeId, list);
     }
     return map;

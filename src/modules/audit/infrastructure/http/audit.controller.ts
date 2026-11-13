@@ -5,7 +5,7 @@ import { Roles } from '../../../../shared/http/decorators';
 import { DATE_REGEX } from '../../../../shared/http/validation';
 import { AuditService } from '../../application/audit.service';
 
-export class AuditQueryDto {
+class AuditQueryDto {
   @IsOptional()
   @IsString()
   @MaxLength(40)

@@ -5,8 +5,6 @@ export interface DayRange {
   endDate: string | null;
 }
 
-export const WEEKDAY_NAMES = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-
 export function isValidDayKey(key: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(key) && DateTime.fromISO(key, { zone: 'UTC' }).isValid;
 }
@@ -35,7 +33,7 @@ export function weekOf(dayKey: string): { from: string; to: string } {
   return { from, to: addDays(from, 6) };
 }
 
-export function covers(range: DayRange, dayKey: string): boolean {
+function covers(range: DayRange, dayKey: string): boolean {
   return range.startDate <= dayKey && (range.endDate === null || dayKey <= range.endDate);
 }
 

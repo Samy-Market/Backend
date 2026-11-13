@@ -31,6 +31,22 @@ export class ReviewJustificationDto {
   @IsNotEmpty({ message: 'La nota no puede estar vacía.' })
   @MaxLength(500, { message: 'La nota no puede superar 500 caracteres.' })
   reviewNote?: string;
+
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'La hora de salida debe tener el formato HH:mm.' })
+  exitTime?: string;
+
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'La hora de ingreso debe tener el formato HH:mm.' })
+  workedFrom?: string;
+
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'La hora de salida debe tener el formato HH:mm.' })
+  workedTo?: string;
+
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'La hora de llegada debe tener el formato HH:mm.' })
+  creditFrom?: string;
 }
 
 export class ListJustificationsQuery {

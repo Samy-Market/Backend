@@ -73,6 +73,8 @@ const report: AttendanceReport = {
               lateMinutes: 14,
               preEntryMinutes: 0,
               justified: false,
+              manual: false,
+              creditedFrom: null,
             },
             {
               id: 'a2',
@@ -82,6 +84,8 @@ const report: AttendanceReport = {
               lateMinutes: 0,
               preEntryMinutes: 0,
               justified: false,
+              manual: false,
+              creditedFrom: null,
             },
           ],
         },

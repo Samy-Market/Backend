@@ -165,3 +165,16 @@ describe('Preingreso', () => {
     expect(summarizeByDay(recs, ZONE, local('2026-11-05T08:30'))[0].workedMinutes).toBe(30);
   });
 });
+
+describe('Hora acreditada por el jefe', () => {
+  it('las horas cuentan desde la hora acreditada, sin cambiar la marca', () => {
+    const records = [
+      { id: 'a', type: 'IN' as const, timestamp: new Date('2026-11-10T13:13:00Z'), creditedFrom: new Date('2026-11-10T13:00:00Z') },
+      { id: 'b', type: 'OUT' as const, timestamp: new Date('2026-11-10T23:00:00Z') },
+    ];
+    const [s] = buildSessions(records, new Date('2026-11-11T00:00:00Z'));
+    expect(s.in).toEqual(new Date('2026-11-10T13:13:00Z'));
+    expect(s.countedFrom).toEqual(new Date('2026-11-10T13:00:00Z'));
+    expect(s.minutes).toBe(600);
+  });
+});

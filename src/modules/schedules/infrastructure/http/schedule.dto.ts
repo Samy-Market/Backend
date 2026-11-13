@@ -19,7 +19,7 @@ import {
 } from 'class-validator';
 import { DATE_REGEX, trimString } from '../../../../shared/http/validation';
 
-export class ScheduleDayDto {
+class ScheduleDayDto {
   @IsInt({ message: 'El día de la semana debe ser un número del 1 (lunes) al 7 (domingo).' })
   @Min(1, { message: 'El día de la semana debe ser un número del 1 (lunes) al 7 (domingo).' })
   @Max(7, { message: 'El día de la semana debe ser un número del 1 (lunes) al 7 (domingo).' })

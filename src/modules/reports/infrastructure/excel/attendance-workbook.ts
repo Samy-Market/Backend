@@ -207,7 +207,7 @@ function buildEmployeeSheet(wb: ExcelJS.Workbook, name: string, e: EmployeeRepor
       hours: asExcelDuration(d?.workedMinutes ?? 0),
       late: asExcelDuration(d?.isLate ? d.lateMinutes : 0),
       overtime: asExcelDuration(d?.overtimeMinutes ?? 0),
-      notes: notesFor(plan, d, today),
+      notes: notesFor(plan, d, today, zone),
     });
     row.getCell('date').numFmt = 'dd/mm/yyyy';
     for (const k of ['hours', 'late', 'overtime']) row.getCell(k).numFmt = DURATION;
@@ -241,7 +241,7 @@ function buildEmployeeSheet(wb: ExcelJS.Workbook, name: string, e: EmployeeRepor
   ws.views = [{ state: 'frozen', ySplit: header.number }];
 }
 
-function notesFor(plan: DayPlanView, d: ReportDay | undefined, today: string): string {
+function notesFor(plan: DayPlanView, d: ReportDay | undefined, today: string, zone: string): string {
   if (!d) {
     if (plan.kind === 'WORK') return plan.date === today ? 'Aún no marca' : 'No marcó';
     return plan.kind === 'REST' ? 'Descanso' : 'Sin horario asignado';
@@ -261,5 +261,11 @@ function notesFor(plan: DayPlanView, d: ReportDay | undefined, today: string): s
   if (d.lateJustified) notes.push(`Atraso ${d.lateMinutes} min justificado`);
   if (d.preEntryMinutes > 0) notes.push(`Preingreso ${d.preEntryMinutes} min`);
   if (d.openSession) notes.push('Sin marca de salida');
+  if (d.marks.some((m) => m.manual)) notes.push('Marcación registrada por el jefe');
+  const credited = d.marks.find((m) => m.creditedFrom);
+  if (credited)
+    notes.push(
+      `Marcó ${localTime(credited.timestamp, zone)}; horas desde ${localTime(credited.creditedFrom, zone)} (ajustado por el jefe)`,
+    );
   return notes.join(' · ');
 }

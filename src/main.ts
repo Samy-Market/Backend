@@ -20,7 +20,6 @@ async function bootstrap() {
   app.useGlobalFilters(new AllExceptionsFilter());
   app.enableShutdownHooks();
   const port = Number(process.env.PORT || 3000);
-  // 0.0.0.0 para aceptar conexiones dentro del contenedor (Railway, Docker).
   await app.listen(port, '0.0.0.0');
   Logger.log(`API escuchando en http://localhost:${port}`, 'Bootstrap');
 }

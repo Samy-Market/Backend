@@ -9,6 +9,7 @@ export interface MarkRecord {
   isLate?: boolean;
   lateMinutes?: number;
   preEntryMinutes?: number;
+  creditedFrom?: Date | null;
 }
 
 export interface ShiftRule {
@@ -17,7 +18,7 @@ export interface ShiftRule {
   toleranceMinutes: number;
 }
 
-export const DEFAULT_MAX_SESSION_HOURS = 16;
+const DEFAULT_MAX_SESSION_HOURS = 16;
 
 export function nextMarkType(
   last: Pick<MarkRecord, 'type' | 'timestamp'> | null | undefined,
@@ -69,7 +70,8 @@ export function computePreEntry(
   return { preEntryMinutes: Math.round(start.diff(local, 'minutes').minutes) };
 }
 
-export function countedFrom(mark: Pick<MarkRecord, 'timestamp' | 'preEntryMinutes'>): Date {
+export function countedFrom(mark: Pick<MarkRecord, 'timestamp' | 'preEntryMinutes' | 'creditedFrom'>): Date {
+  if (mark.creditedFrom) return mark.creditedFrom;
   const pre = mark.preEntryMinutes ?? 0;
   if (pre <= 0) return mark.timestamp;
   const minuteStart = Math.floor(mark.timestamp.getTime() / 60_000) * 60_000;

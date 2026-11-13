@@ -1,7 +1,7 @@
 export const DEFAULT_RADIUS_METERS = 150;
-export const MIN_RADIUS_METERS = 30;
-export const MAX_RADIUS_METERS = 2000;
-export const MAX_ACCURACY_METERS = 500;
+const MIN_RADIUS_METERS = 30;
+const MAX_RADIUS_METERS = 2000;
+const MAX_ACCURACY_METERS = 500;
 const ACCURACY_ALLOWANCE_METERS = 50;
 
 export interface Geofence {

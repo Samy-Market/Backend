@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { AuthUser } from '../../../../shared/domain/auth-user';
 import { Role } from '../../../../shared/domain/roles';
 import { CurrentUser, Roles } from '../../../../shared/http/decorators';
@@ -18,6 +18,19 @@ export class JustificationsController {
   @Get()
   list(@CurrentUser() user: AuthUser, @Query() q: ListJustificationsQuery) {
     return this.justifications.list(user, q.status);
+  }
+
+  @Roles(Role.ADMIN)
+  @Post(':id/revert')
+  @HttpCode(200)
+  revert(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.justifications.revert(id, user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPERVISOR)
+  @Get(':id/correction')
+  correction(@Param('id', ParseUUIDPipe) id: string) {
+    return this.justifications.correction(id);
   }
 
   @Roles(Role.ADMIN, Role.SUPERVISOR)

@@ -20,6 +20,7 @@ enum AttendanceType {
 
 enum AttendanceSource {
   WEB
+  MANUAL
 }
 
 enum JustificationStatus {
@@ -170,15 +171,21 @@ model Attendance {
   longitude       Float?
   accuracyMeters  Int?
   distanceMeters  Int?
+  /// Si el jefe ajustó desde qué hora cuentan las horas de este ingreso (la marca original no cambia)
+  creditedFrom    DateTime?
+  /// La aprobación que creó o ajustó esta marca; permite deshacerla
+  justificationId String?
   createdAt       DateTime         @default(now())
 
   employee       Employee        @relation(fields: [employeeId], references: [id])
   site           Site?           @relation(fields: [siteId], references: [id])
-  justifications Justification[]
+  justifications Justification[] @relation("JustifiedMark")
+  changedBy      Justification?  @relation("ChangedMarks", fields: [justificationId], references: [id], onDelete: SetNull)
 
   @@index([employeeId, timestamp])
   @@index([timestamp])
   @@index([siteId, timestamp])
+  @@index([justificationId])
 }
 
 model Justification {
@@ -194,9 +201,10 @@ model Justification {
   reviewNote   String?
   createdAt    DateTime            @default(now())
 
-  attendance Attendance? @relation(fields: [attendanceId], references: [id], onDelete: Restrict)
-  employee   Employee    @relation(fields: [employeeId], references: [id])
-  reviewer   User?       @relation("Reviewer", fields: [reviewedBy], references: [id])
+  attendance   Attendance?  @relation("JustifiedMark", fields: [attendanceId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id])
+  changedMarks Attendance[] @relation("ChangedMarks")
+  reviewer     User?        @relation("Reviewer", fields: [reviewedBy], references: [id])
 
   @@index([status])
   @@index([employeeId])

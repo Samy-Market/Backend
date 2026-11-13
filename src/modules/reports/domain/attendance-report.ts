@@ -35,6 +35,8 @@ export interface ReportDay {
     lateMinutes: number;
     preEntryMinutes: number;
     justified: boolean;
+    manual: boolean;
+    creditedFrom: Date | null;
   }[];
 }
 
@@ -91,7 +93,12 @@ export interface AttendanceReport {
   employees: EmployeeReport[];
 }
 
-export type ReportMark = Required<MarkRecord> & { siteId: string | null; justified: boolean };
+export type ReportMark = Required<Omit<MarkRecord, 'creditedFrom'>> & {
+  creditedFrom?: Date | null;
+  siteId: string | null;
+  justified: boolean;
+  manual?: boolean;
+};
 
 export interface EmployeeReportInput {
   employee: ReportEmployee;
@@ -117,6 +124,7 @@ export function employeeReport(i: EmployeeReportInput): EmployeeReport {
   const summaries = summarizeByDay(i.records, i.zone, i.now, i.maxSessionHours).filter((d) => d.date >= i.fromKey && d.date <= i.toKey);
   const byDay = new Map(summaries.map((d) => [d.date, d]));
   const justified = new Set(i.records.filter((r) => r.justified).map((r) => r.id));
+  const manual = new Set(i.records.filter((r) => r.manual).map((r) => r.id));
   const off = (date: string) => (i.timeOff ? dayOffFor(date, i.timeOff) : null);
   const plans = planForRange(i.assignments, i.fromKey, i.toKey);
 
@@ -144,6 +152,7 @@ export function employeeReport(i: EmployeeReportInput): EmployeeReport {
         siteRef(daySite(p.date)),
         i.zone,
         justified,
+        manual,
       ),
     );
   const calendar = plans.filter((p) => p.date <= i.today && inSite(p.date)).map(toPlanView);
@@ -224,6 +233,7 @@ function toReportDay(
   site: SiteRef,
   zone: string,
   justified: Set<string>,
+  manual: Set<string>,
 ): ReportDay {
   const lateJustified = d.isLate && d.records.some((r) => r.type === 'IN' && r.isLate && justified.has(r.id!));
   return {
@@ -252,6 +262,8 @@ function toReportDay(
         lateMinutes: r.lateMinutes ?? 0,
         preEntryMinutes: r.preEntryMinutes ?? 0,
         justified: justified.has(r.id!),
+        manual: manual.has(r.id!),
+        creditedFrom: r.creditedFrom ?? null,
       })),
   };
 }

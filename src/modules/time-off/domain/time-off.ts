@@ -22,8 +22,6 @@ export interface TimeOff {
   leaves: LeaveRule[];
 }
 
-export const NO_TIME_OFF: TimeOff = { holidays: new Map(), leaves: [] };
-
 export function dayOffFor(date: string, t: TimeOff): DayOff | null {
   const holiday = t.holidays.get(date);
   if (holiday) return { kind: 'HOLIDAY', label: `Feriado: ${holiday}` };
