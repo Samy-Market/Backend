@@ -118,8 +118,8 @@ export class AttendanceService {
       this.marks.last(employeeId),
       this.timeOff.dayOff(employeeId, today),
     ]);
-    const { fence } = await this.locator.geofence(todaySite.site.id);
-    const presence = this.presence(records, last, plan, now);
+    const [{ fence }, justified] = await Promise.all([this.locator.geofence(todaySite.site.id), this.justifiedLateIns(records)]);
+    const presence = this.presence(records, last, plan, now, justified);
     return {
       ...presence,
       missingAfterStart: presence.missingAfterStart && !dayOff,
@@ -134,16 +134,17 @@ export class AttendanceService {
     const today = this.clock.today();
     const employees = await this.roster.activeWithMarksSince(statusWindowStart(now, APP_TIMEZONE, MAX_SESSION_HOURS));
     const ids = employees.map((e) => e.id);
-    const [lastByEmployee, plans, daySites, siteNames, offRange] = await Promise.all([
+    const [lastByEmployee, plans, daySites, siteNames, offRange, justified] = await Promise.all([
       this.marks.lastByEmployee(),
       this.planner.plansForDay(ids, today),
       this.locator.sitesForDay(employees, today),
       this.locator.siteNames(),
       this.timeOff.forRange(ids, today, today),
+      this.justifiedLateIns(employees.flatMap((e) => e.marks)),
     ]);
 
     const items = employees.map((e) => {
-      const presence = this.presence(e.marks, lastByEmployee.get(e.id) ?? null, plans.get(e.id)!, now);
+      const presence = this.presence(e.marks, lastByEmployee.get(e.id) ?? null, plans.get(e.id)!, now, justified);
       const dayOff = dayOffFor(today, offRange.of(e.id));
       return {
         employee: { id: e.id, fullName: e.fullName, position: e.position, documentId: e.documentId },
@@ -234,8 +235,18 @@ export class AttendanceService {
     return { from, to, today, days: plans.map(toPlanView) };
   }
 
-  private presence(records: Mark[], last: Mark | null, plan: Parameters<typeof presenceOf>[0]['plan'], now: Date): Presence {
-    return presenceOf({ records, last, plan, now, zone: APP_TIMEZONE, maxSessionHours: MAX_SESSION_HOURS });
+  private presence(
+    records: Mark[],
+    last: Mark | null,
+    plan: Parameters<typeof presenceOf>[0]['plan'],
+    now: Date,
+    justifiedMarkIds: Set<string>,
+  ): Presence {
+    return presenceOf({ records, last, plan, now, zone: APP_TIMEZONE, maxSessionHours: MAX_SESSION_HOURS, justifiedMarkIds });
+  }
+
+  private justifiedLateIns(records: Mark[]): Promise<Set<string>> {
+    return this.marks.justifiedMarkIds(records.filter((r) => r.type === 'IN' && r.isLate).map((r) => r.id));
   }
 
   private async summarize(employeeId: string, from: Date, to: Date, now: Date): Promise<DaySummary[]> {

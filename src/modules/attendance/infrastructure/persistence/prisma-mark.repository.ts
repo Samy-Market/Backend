@@ -42,6 +42,15 @@ export class PrismaMarkRepository extends MarkRepository {
     });
   }
 
+  async justifiedMarkIds(markIds: string[]): Promise<Set<string>> {
+    if (!markIds.length) return new Set();
+    const rows = await this.prisma.justification.findMany({
+      where: { status: 'APPROVED', attendanceId: { in: markIds } },
+      select: { attendanceId: true },
+    });
+    return new Set(rows.flatMap((r) => (r.attendanceId ? [r.attendanceId] : [])));
+  }
+
   async approvedJustifications(employeeId: string, fromKey: string, toKey: string) {
     const from = toDbDate(fromKey);
     const to = new Date(toDbDate(toKey).getTime() + 2 * 86_400_000);

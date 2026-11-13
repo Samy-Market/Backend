@@ -43,5 +43,6 @@ export abstract class MarkRepository {
     fromKey: string,
     toKey: string,
   ): Promise<{ markIds: Set<string>; absenceDates: Set<string> }>;
+  abstract justifiedMarkIds(markIds: string[]): Promise<Set<string>>;
   abstract lastByEmployee(): Promise<Map<string, Mark>>;
 }

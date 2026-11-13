@@ -15,6 +15,7 @@ export interface Presence {
   openSession: boolean;
   isLate: boolean;
   lateMinutes: number;
+  lateJustified: boolean;
   missingAfterStart: boolean;
   todayPlan: DayPlanView;
 }
@@ -26,13 +27,14 @@ export interface PresenceInput {
   now: Date;
   zone: string;
   maxSessionHours: number;
+  justifiedMarkIds?: Set<string>;
 }
 
 export function statusWindowStart(now: Date, zone: string, maxSessionHours: number): Date {
   return DateTime.fromJSDate(now, { zone }).startOf('day').minus({ hours: maxSessionHours }).toJSDate();
 }
 
-export function presenceOf({ records, last, plan, now, zone, maxSessionHours }: PresenceInput): Presence {
+export function presenceOf({ records, last, plan, now, zone, maxSessionHours, justifiedMarkIds }: PresenceInput): Presence {
   const shift = plan.kind === 'WORK' ? plan.shift : null;
   const today = DateTime.fromJSDate(now, { zone });
   const days = summarizeByDay(records, zone, now, maxSessionHours);
@@ -48,6 +50,9 @@ export function presenceOf({ records, last, plan, now, zone, maxSessionHours }: 
     : undefined;
   const running = inside ? days.flatMap((d) => d.sessions).find((s) => s.open && !s.stale) : undefined;
   const workedMinutesToday = (todaySummary?.workedMinutes ?? 0) + (currentOpen ? sumWorkedMinutes([currentOpen]) : 0);
+
+  const late = todaySummary?.isLate ?? false;
+  const lateJustified = late && todaySummary!.records.some((r) => r.type === 'IN' && r.isLate && !!r.id && !!justifiedMarkIds?.has(r.id));
 
   let missingAfterStart = false;
   if (shift && status === 'NOT_MARKED') {
@@ -65,8 +70,9 @@ export function presenceOf({ records, last, plan, now, zone, maxSessionHours }: 
     countingFrom: running?.countedFrom ?? null,
     workedMinutesToday,
     openSession: inside || !!todaySummary?.openSession,
-    isLate: todaySummary?.isLate ?? false,
+    isLate: late && !lateJustified,
     lateMinutes: todaySummary?.lateMinutes ?? 0,
+    lateJustified,
     missingAfterStart,
     todayPlan: toPlanView(plan),
   };

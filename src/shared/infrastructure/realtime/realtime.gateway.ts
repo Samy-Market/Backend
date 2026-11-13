@@ -63,7 +63,7 @@ export class RealtimeGateway extends RealtimeNotifier implements OnGatewayInit, 
   }
 
   justificationReviewed(employeeId: string, payload: unknown) {
-    this.server.to(ROOMS.employee(employeeId)).emit(EVENTS.justificationReviewed, payload);
+    this.server.to([ROOMS.admins, ROOMS.employee(employeeId)]).emit(EVENTS.justificationReviewed, payload);
   }
 
   disconnectUser(userId: string) {
